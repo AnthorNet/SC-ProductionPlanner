@@ -25,8 +25,6 @@ export default class SCPP
         this.activatedMods              = [];
     }
 
-
-
     start()
     {
         if(this.urlScriptsVERSION !== null)
@@ -162,8 +160,6 @@ export default class SCPP
 
     setupEvents()
     {
-        this.clickedInput = null;
-
         $('.addOneItem').on('click', function(e){
             let currentId       = $(e.currentTarget).attr('data-id'),
                 currentInput    = $('input.requireInput[data-id=' + currentId + ']');
@@ -220,13 +216,33 @@ export default class SCPP
                 $('.addOneItem[data-id=' + $(e.currentTarget).attr('data-id') + ']').addClass('d-flex').removeClass('d-none');
             }
 
-            this.clickedInput = null;
             this.triggerUpdateDebounce();
         }.bind(this));
+
         $('select.requireInput').on('change', function(e){
-            this.clickedInput = $(e.currentTarget);
             this.triggerUpdateDebounce();
         }.bind(this));
+
+        // Sync alternative recipes on change
+        $('select[name="altRecipes[]"]').on('changed.bs.select', function(e, clickedIndex, isSelected, previousValue){
+            let clickedValue = $(this).find('option:eq(' + clickedIndex + ')').attr('value');
+
+                if(Array.isArray(previousValue)) // #mainAltRecipe was clicked...
+                {
+                    let option = $('select[name="altRecipes[]"]:not(#mainAltRecipe) option[value="' + clickedValue + '"]');
+                    let select = option.parent();
+
+                        option.prop('selected', isSelected);
+                        select.selectpicker('refresh');
+                }
+                else // Need to sync #mainAltRecipe
+                {
+                    $('#mainAltRecipe option[value="' + previousValue + '"]').prop('selected', false);
+                    $('#mainAltRecipe option[value="' + clickedValue + '"]').prop('selected', true);
+
+                    $('#mainAltRecipe').selectpicker('refresh');
+                }
+        });
 
         return this.updateRequired(true);
     }
@@ -290,55 +306,13 @@ export default class SCPP
                                             let currentValue = $(this).val();
                                             let isSelected   = $(this).is(':selected');
 
-                                            if((isMainAltRecipe === true || key > 0) && isSelected === true && formData[fieldName].includes(currentValue) === false)
-                                            {
-                                                formData[fieldName].push(currentValue);
-                                            }
-
-                                            /*
-                                            if(this.clickedInput !== null)
-                                            {
-                                                if(this.clickedInput.attr('id') !== 'mainAltRecipe')
+                                                if(isSelected === true)
                                                 {
-                                                    let mainAltRecipeValue = $('#mainAltRecipe option[value=' + currentValue + ']');
-                                                        if(mainAltRecipeValue.length > 0)
-                                                        {
-                                                            if(isSelected === true && mainAltRecipeValue.is(':selected') === false)
-                                                            {
-                                                                mainAltRecipeValue.prop("selected", true);
-
-                                                                $('#mainAltRecipe').selectpicker('render');
-                                                            }
-                                                            if(isSelected === false && mainAltRecipeValue.is(':selected') === true)
-                                                            {
-                                                                mainAltRecipeValue.prop("selected", false);
-
-                                                                let index = formData[fieldName].indexOf(currentValue);
-                                                                    if (index !== -1) formData[fieldName].splice(index, 1);
-
-                                                                $('#mainAltRecipe').selectpicker('render');
-                                                            }
-                                                        }
+                                                    if((isMainAltRecipe === true || key > 0) && formData[fieldName].includes(currentValue) === false)
+                                                    {
+                                                        formData[fieldName].push(currentValue);
+                                                    }
                                                 }
-                                                else
-                                                {
-                                                    $('.subAltRecipes').each(function(){
-                                                        let subAltRecipeValue = $(this).find('option[value=' + currentValue + ']');
-                                                            if(subAltRecipeValue.length > 0)
-                                                            {
-                                                                if(subAltRecipeValue.is(':selected') === true && isSelected === false)
-                                                                {
-                                                                    $(this).selectpicker('val', $(this).find('option:eq(0)').val());
-                                                                }
-                                                                if(subAltRecipeValue.is(':selected') === false && isSelected === true)
-                                                                {
-                                                                    $(this).selectpicker('val', currentValue);
-                                                                }
-                                                            }
-                                                    });
-                                                }
-                                            }
-                                            /**/
                                         });
                                 }
                         }

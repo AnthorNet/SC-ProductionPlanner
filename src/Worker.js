@@ -80,7 +80,7 @@ export default function ProductionPlannerWorker()
         {
             for(let i = 0; i < formData.activatedMods.length; i++)
             {
-                self.url.push('mods/' + formData.activatedMods[i]);
+                self.url.push('mods/' + formData.activatedMods[i].data.id);
             }
 
             delete formData.activatedMods;
@@ -1231,7 +1231,15 @@ export default function ProductionPlannerWorker()
                                     html.push('<img src="' + self.items[itemId].image + '" style="width: 40px;" class="mr-3" />');
 
                                     html.push(new Intl.NumberFormat(self.locale).format(self.requestedItems[itemId]) + 'x ');
-                                    html.push('<a href="' + self.baseUrls.items + '/id/' + itemId + '/name/' + self.items[itemId].name + '"style="line-height: 40px;">' + self.items[itemId].name + '</a>');
+
+                                    if(self.items[itemId].url !== undefined)
+                                    {
+                                        html.push('<a href="' + self.items[itemId].url + '"style="line-height: 40px;">' + self.items[itemId].name + '</a>');
+                                    }
+                                    else
+                                    {
+                                        html.push('<a href="' + self.baseUrls.items + '/id/' + itemId + '/name/' + self.items[itemId].name + '"style="line-height: 40px;">' + self.items[itemId].name + '</a>');
+                                    }
 
                                     for(let k = 0; k < self.graphNodes.length; k++)
                                     {
@@ -1289,7 +1297,15 @@ export default function ProductionPlannerWorker()
 
                                 html.push('<div class="media-body">');
                                     html.push(new Intl.NumberFormat(self.locale).format(self.graphNodes[k].data.neededQty) + 'x ');
-                                    html.push('<a href="' + self.baseUrls.items + '/id/' + self.graphNodes[k].data.itemId + '/name/' + self.items[self.graphNodes[k].data.itemId].name + '" style="line-height: 40px;">' + self.items[self.graphNodes[k].data.itemId].name + '</a>');
+
+                                    if(self.items[self.graphNodes[k].data.itemId].url !== undefined)
+                                    {
+                                        html.push('<a href="' + self.items[self.graphNodes[k].data.itemId].url + '" style="line-height: 40px;">' + self.items[self.graphNodes[k].data.itemId].name + '</a>');
+                                    }
+                                    else
+                                    {
+                                        html.push('<a href="' + self.baseUrls.items + '/id/' + self.graphNodes[k].data.itemId + '/name/' + self.items[self.graphNodes[k].data.itemId].name + '" style="line-height: 40px;">' + self.items[self.graphNodes[k].data.itemId].name + '</a>');
+                                    }
                                 html.push('</div>');
                             }
                             else
@@ -1306,7 +1322,15 @@ export default function ProductionPlannerWorker()
                                 html.push('<img src="' + self.buildings[self.graphNodes[k].data.buildingType].image + '" alt="' + self.buildings[self.graphNodes[k].data.buildingType].name + '" style="width: 40px;" class="mr-3 collapseChildren" />');
 
                                 html.push('<div class="media-body">');
-                                    html.push('<a href="' + self.baseUrls.buildings + '/id/' + self.graphNodes[k].data.buildingType + '/name/' + self.buildings[self.graphNodes[k].data.buildingType].name + '">' + self.buildings[self.graphNodes[k].data.buildingType].name + '</a>');
+
+                                    if(self.buildings[self.graphNodes[k].data.buildingType].url !== undefined)
+                                    {
+                                        html.push('<a href="' + self.buildings[self.graphNodes[k].data.buildingType].url + '">' + self.buildings[self.graphNodes[k].data.buildingType].name + '</a>');
+                                    }
+                                    else
+                                    {
+                                        html.push('<a href="' + self.baseUrls.buildings + '/id/' + self.graphNodes[k].data.buildingType + '/name/' + self.buildings[self.graphNodes[k].data.buildingType].name + '">' + self.buildings[self.graphNodes[k].data.buildingType].name + '</a>');
+                                    }
 
                                     if(self.graphNodes[k].data.nodeType === 'productionBuilding')
                                     {
@@ -1373,16 +1397,24 @@ export default function ProductionPlannerWorker()
                     html.push('<td width="40"><img src="' + self.items[itemId].image + '" style="width: 40px;" /></td>');
                     html.push('<td class="align-middle">');
 
-                    if(self.items[itemId].category === 'liquid')
-                    {
-                        html.push(new Intl.NumberFormat(self.locale).format(self.listItems[itemId]) + ' m³/min of ');
-                    }
-                    else
-                    {
-                        html.push(new Intl.NumberFormat(self.locale).format(self.listItems[itemId]) + ' units/min of ');
-                    }
+                        if(self.items[itemId].category === 'liquid')
+                        {
+                            html.push(new Intl.NumberFormat(self.locale).format(self.listItems[itemId]) + ' m³/min of ');
+                        }
+                        else
+                        {
+                            html.push(new Intl.NumberFormat(self.locale).format(self.listItems[itemId]) + ' units/min of ');
+                        }
 
-                        html.push('<a href="' + self.baseUrls.items + '/id/' + itemId + '/name/' + self.items[itemId].name + '">' + self.items[itemId].name + '</a>');
+                        if(self.items[itemId].url !== undefined)
+                        {
+                            html.push('<a href="' + self.items[itemId].url + '">' + self.items[itemId].name + '</a>');
+                        }
+                        else
+                        {
+                            html.push('<a href="' + self.baseUrls.items + '/id/' + itemId + '/name/' + self.items[itemId].name + '">' + self.items[itemId].name + '</a>');
+                        }
+
                    html.push('</td>');
                 html.push('</tr>');
             }
@@ -1466,7 +1498,16 @@ export default function ProductionPlannerWorker()
 
                 html.push('<td class="align-middle">');
                     html.push(new Intl.NumberFormat(self.locale).format(self.listBuildings[buildingId]) + 'x ');
-                    html.push('<a href="' + self.baseUrls.buildings + '/id/' + buildingId + '/name/' + self.buildings[buildingId].name + '">' + self.buildings[buildingId].name + '</a>');
+
+                    if(self.buildings[buildingId].url !== undefined)
+                    {
+                        html.push('<a href="' + self.buildings[buildingId].url + '">' + self.buildings[buildingId].name + '</a>');
+                    }
+                    else
+                    {
+                        html.push('<a href="' + self.baseUrls.buildings + '/id/' + buildingId + '/name/' + self.buildings[buildingId].name + '">' + self.buildings[buildingId].name + '</a>');
+                    }
+
                 html.push('</td>');
 
                 html.push('<td class="align-middle">');
@@ -1516,7 +1557,15 @@ export default function ProductionPlannerWorker()
                     if(self.items[idRecipe] !== undefined)
                     {
                         html.push('<img src="' + self.items[idRecipe].image + '" title="' + self.items[idRecipe].name + '" style="width: 24px;" /> ');
-                        html.push('<a href="' + self.baseUrls.items + '/id/' + idRecipe + '/name/' + self.items[idRecipe].name + '">' + self.items[idRecipe].name + '</a>');
+
+                        if(self.items[idRecipe].url !== undefined)
+                        {
+                            html.push('<a href="' + self.items[idRecipe].url + '">' + self.items[idRecipe].name + '</a>');
+                        }
+                        else
+                        {
+                            html.push('<a href="' + self.baseUrls.items + '/id/' + idRecipe + '/name/' + self.items[idRecipe].name + '">' + self.items[idRecipe].name + '</a>');
+                        }
                     }
                     else
                     {

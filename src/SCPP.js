@@ -15,7 +15,6 @@ export default class SCPP
 
         this.staticAssetsUrl            = "https://static.satisfactory-calculator.com";
         this.gameDataUrl                = "https://satisfactory-calculator.com/" + this.language + "/api/game";
-        this.modsDataUrl                = "https://satisfactory-calculator.com/" + this.language + "/mods/index/json";
 
         // Updater notice
         this.scriptsVERSION             = Math.floor(Math.random() * Math.floor(999));
@@ -34,12 +33,10 @@ export default class SCPP
 
         $.getJSON(this.gameDataUrl + '?v=' + this.scriptsVERSION, function(data)
         {
-            this.modsData       = data.modsData;
             this.buildingsData  = data.buildingsData;
             this.itemsData      = data.itemsData;
             this.toolsData      = data.toolsData;
             this.recipesData    = data.recipesData;
-            this.schematicsData = data.schematicsData;
 
             for(let recipeId in this.recipesData)
             {
@@ -49,11 +46,24 @@ export default class SCPP
                 }
             }
 
-            for(let schematicId in this.schematicsData)
+            if(this.activatedMods.length > 0)
             {
-                if(this.schematicsData[schematicId].className !== undefined && this.schematicsData[schematicId].className.startsWith('/Game/FactoryGame/Schematics/') === false)
+                for(let i = 0; i < this.activatedMods.length; i++)
                 {
-                    this.schematicsData[schematicId].className = '/Game/FactoryGame/Schematics/' + this.schematicsData[schematicId].className;
+                    let currentMod = this.activatedMods[i];
+
+                        for(let buildingId in currentMod.buildings)
+                        {
+                            this.buildingsData[buildingId] = currentMod.buildings[buildingId];
+                        }
+                        for(let itemId in currentMod.items)
+                        {
+                            this.itemsData[itemId] = currentMod.items[itemId];
+                        }
+                        for(let recipeId in currentMod.recipes)
+                        {
+                            this.recipesData[recipeId] = currentMod.recipes[recipeId];
+                        }
                 }
             }
 

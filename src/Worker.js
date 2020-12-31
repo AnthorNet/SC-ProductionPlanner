@@ -735,9 +735,6 @@ export default function ProductionPlannerWorker()
                     self.graphNodes[i].data.label += '*';
                 }
 
-                //self.visNodes[i].href   = self.baseUrls.planner + '/' + node.itemId + '/' + Math.ceil(node.neededQty);
-                //self.visNodes[i].title  = 'Click to check how to produce ' + self.visNodes[i].label;
-
                 // Add to items list
                 if(self.listItems[node.data.itemId] === undefined)
                 {
@@ -1572,7 +1569,15 @@ export default function ProductionPlannerWorker()
                         if(self.tools[idRecipe] !== undefined)
                         {
                             html.push('<img src="' + self.tools[idRecipe].image + '" title="' + self.tools[idRecipe].name + '" style="width: 24px;" /> ');
-                            html.push('<a href="' + self.baseUrls.tools + '/id/' + idRecipe + '/name/' + self.tools[idRecipe].name + '">' + self.tools[idRecipe].name + '</a>');
+
+                            if(self.tools[idRecipe].url !== undefined)
+                            {
+                                html.push('<a href="' + self.tools[idRecipe].url + '">' + self.tools[idRecipe].name + '</a>');
+                            }
+                            else
+                            {
+                                html.push('<a href="' + self.baseUrls.tools + '/id/' + idRecipe + '/name/' + self.tools[idRecipe].name + '">' + self.tools[idRecipe].name + '</a>');
+                            }
                         }
                         else
                         {

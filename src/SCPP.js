@@ -60,6 +60,10 @@ export default class SCPP
                         {
                             this.itemsData[itemId] = currentMod.items[itemId];
                         }
+                        for(let toolId in currentMod.tools)
+                        {
+                            this.toolsData[toolId] = currentMod.tools[toolId];
+                        }
                         for(let recipeId in currentMod.recipes)
                         {
                             this.recipesData[recipeId] = currentMod.recipes[recipeId];

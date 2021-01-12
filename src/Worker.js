@@ -9,6 +9,8 @@ export default function ProductionPlannerWorker()
     self.translate      = {};
 
     self.options        = {
+        viewMode            : 'REALISTIC',
+
         useManifolds        : 1,
         mergeBuildings      : 1,
         maxLevel            : null,
@@ -74,6 +76,30 @@ export default function ProductionPlannerWorker()
             self.url.push('direction/' + formData.direction);
             self.graphDirection = formData.direction;
             delete formData.direction;
+        }
+
+        if(formData.view !== undefined && formData.view !== 'REALISTIC')
+        {
+            self.url.push('view/' + formData.view);
+            self.options.viewMode = formData.view;
+
+            // If using SIMPLE view, reset some other options
+            if(formData.view === 'SIMPLE')
+            {
+                delete formData.mergeBuildings; // Merge buildings
+                delete formData.useManifolds;
+                self.options.useManifolds = 0;  // Don't use manifolds
+
+                // Reset max speeds
+                delete formData.maxBeltSpeed;
+                delete formData.maxPipeSpeed;
+                delete formData.minerSpeed;
+                delete formData.pumpSpeed;
+
+                delete formData.maxLevel;
+            }
+
+            delete formData.view;
         }
 
         if(formData.activatedMods !== undefined && formData.activatedMods.length > 0)
@@ -230,9 +256,17 @@ export default function ProductionPlannerWorker()
         }
 
         // Merge nodes when possible!
-        if(self.options.mergeBuildings === 1)
+        if(self.options.mergeBuildings === 1 || self.options.viewMode === 'SIMPLE')
         {
-            self.postMessage({type: 'updateLoaderText', text: 'Improving buildings efficiency...'});
+            if(self.options.viewMode === 'SIMPLE')
+            {
+                self.postMessage({type: 'updateLoaderText', text: 'Merging all buildings...'});
+            }
+            if(self.options.mergeBuildings === 1)
+            {
+                self.postMessage({type: 'updateLoaderText', text: 'Improving buildings efficiency...'});
+            }
+
             for(let i = 0; i < self.graphNodes.length; i++)
             {
                 for(let j = 0; j < self.graphNodes.length; j++)
@@ -248,7 +282,7 @@ export default function ProductionPlannerWorker()
                                  && self.graphNodes[i].data.recipe === self.graphNodes[j].data.recipe
                             )
                             {
-                                if(self.graphNodes[i].data.qtyUsed < self.graphNodes[i].data.qtyProduced)
+                                if(self.graphNodes[i].data.qtyUsed < self.graphNodes[i].data.qtyProduced || self.options.viewMode === 'SIMPLE')
                                 {
                                     let mergedQty       = self.graphNodes[i].data.qtyUsed + self.graphNodes[j].data.qtyUsed;
                                     let maxBeltSpeed    = self.options.maxBeltSpeed;
@@ -257,7 +291,7 @@ export default function ProductionPlannerWorker()
                                             maxBeltSpeed = self.options.maxPipeSpeed;
                                         }
 
-                                    if(mergedQty <= self.graphNodes[i].data.qtyProduced && mergedQty <= maxBeltSpeed)
+                                    if((mergedQty <= self.graphNodes[i].data.qtyProduced && mergedQty <= maxBeltSpeed) || self.options.viewMode === 'SIMPLE')
                                     {
                                         let canMergeInputs  = true;
                                         let inputQty        = {};
@@ -334,7 +368,6 @@ export default function ProductionPlannerWorker()
                 }
             }
         }
-
 
         if(self.options.useManifolds === 1)
         {
@@ -639,8 +672,7 @@ export default function ProductionPlannerWorker()
             {
                 let performance                         = (node.data.qtyUsed / node.data.qtyProduced * 100);
                     self.graphNodes[i].data.performance = Math.round(performance);
-
-                let getColorForPercentage = function(pct) {
+                let getColorForPercentage               = function(pct) {
                     pct /= 100;
 
                     let percentColors = [
@@ -649,14 +681,13 @@ export default function ProductionPlannerWorker()
                         { pct: 1.0, color: { r: 0x00, g: 0xff, b: 0 } }
                     ];
                     let i = 1;
-
-                    for(i; i < percentColors.length - 1; i++)
-                    {
-                        if(pct < percentColors[i].pct)
+                        for(i; i < percentColors.length - 1; i++)
                         {
-                            break;
+                            if(pct < percentColors[i].pct)
+                            {
+                                break;
+                            }
                         }
-                    }
 
                     let lower       = percentColors[i - 1];
                     let upper       = percentColors[i];
@@ -671,12 +702,25 @@ export default function ProductionPlannerWorker()
                     };
                     return 'rgb(' + [color.r, color.g, color.b].join(',') + ')';
                 };
-                self.graphNodes[i].data.performanceColor = getColorForPercentage(Math.round(performance));
 
-                self.graphNodes[i].data.label   = self.buildings[node.data.buildingType].name
-                                                + ' (' + new Intl.NumberFormat(self.locale).format(Math.round(performance)) + '%)'
-                                                + '\n' + '(' + self.recipes[self.graphNodes[i].data.recipe].name + ')';
-                                                //+ '(' + node.data.qtyUsed + '/' + node.data.qtyProduced + ')'; // DEBUG
+                    if(self.options.viewMode === 'REALISTIC')
+                    {
+
+                        self.graphNodes[i].data.performanceColor = getColorForPercentage(Math.round(performance));
+                        self.graphNodes[i].data.label   = self.buildings[node.data.buildingType].name
+                                                        + ' (' + new Intl.NumberFormat(self.locale).format(Math.round(performance)) + '%)'
+                                                        + '\n' + '(' + self.recipes[self.graphNodes[i].data.recipe].name + ')';
+                                                        //+ '(' + node.data.qtyUsed + '/' + node.data.qtyProduced + ')'; // DEBUG
+                    }
+
+                    if(self.options.viewMode === 'SIMPLE')
+                    {
+                        self.graphNodes[i].data.performanceColor = getColorForPercentage(Math.min(100, Math.round(performance)));
+                        self.graphNodes[i].data.label   = 'x' + new Intl.NumberFormat(self.locale).format(Math.ceil(performance / 10) / 10)
+                                                        + ' ' + self.buildings[node.data.buildingType].name
+                                                        + '\n' + '(' + self.recipes[self.graphNodes[i].data.recipe].name + ')';
+                                                        //+ '(' + node.data.qtyUsed + '/' + node.data.qtyProduced + ')'; // DEBUG
+                    }
 
                 // Calculate required power!
                 let powerUsage              = self.buildings[node.data.buildingType].powerUsed * Math.pow(performance / 100, 1.6);

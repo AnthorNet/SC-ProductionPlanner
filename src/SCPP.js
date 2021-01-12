@@ -258,6 +258,13 @@ export default class SCPP
                 }
         });
 
+        // Switch available options based on view mode
+        $('select[name="view"]').on('change', function(){
+            let currentValue = $(this).val();
+                $('div[data-view][data-view!="' + currentValue + '"]').hide();
+                $('div[data-view="' + currentValue + '"]').show();
+        });
+
         return this.updateRequired(true);
     }
 

@@ -9,6 +9,8 @@ export default class SCPP
         // General stuffs
         this.baseUrls                   = {};
         this.doUpdateUrl                = true;
+
+        this.debug                      = false;
         this.language                   = 'en';
         this.translate                  = {};
         this.productionContainer        = $('#productionContainer');
@@ -116,7 +118,7 @@ export default class SCPP
                         'background-fit'        : 'none',
                         'background-width'      : '75%',
                         'background-height'     : '75%',
-                        'border-width'          : '15px'
+                        'border-width'          : 'data(borderWidth)'
                     }
                 },
                 {
@@ -264,6 +266,32 @@ export default class SCPP
                 $('div[data-view][data-view!="' + currentValue + '"]').hide();
                 $('div[data-view="' + currentValue + '"]').show();
         });
+        $('select[name="mergeBuildings"]').on('change', function(){
+            let currentValue = $(this).val();
+                if(currentValue > 0)
+                {
+                    $('div[data-mergeBuildings]').show();
+                }
+                else
+                {
+                    $('div[data-mergeBuildings]').hide();
+                }
+        });
+
+        // Switch available options based on powerShards
+        $('input[name="powerShards"]').on('keyup change input', function(e){
+            let currentValue = parseInt($(e.currentTarget).val());
+                if(currentValue > 0)
+                {
+                    $('div[data-powerShards]').show();
+                }
+                else
+                {
+                    $('div[data-powerShards]').hide();
+                }
+
+                this.triggerUpdateDebounce();
+        }.bind(this));
 
         return this.updateRequired(true);
     }
@@ -289,7 +317,7 @@ export default class SCPP
         $('.requireInput').each(function(){
             if($(this).is('select'))
             {
-                if($(this).attr('name') === 'mergeBuildings' || $(this).attr('name') === 'useManifolds')
+                if(['mergeBuildings', 'useManifolds', 'minerOverclocking', 'pumpOverclocking', 'buildingOverclocking'].includes($(this).attr('name')))
                 {
                     if(parseInt($(this).children("option:selected").val()) !== 1)
                     {
@@ -349,7 +377,14 @@ export default class SCPP
                 // General items...
                 if($(this).val() > 0)
                 {
-                    formData[$(this).attr('data-id')] = $(this).val();
+                    if($(this).attr('data-id') !== undefined)
+                    {
+                        formData[$(this).attr('data-id')] = $(this).val();
+                    }
+                    else
+                    {
+                        formData[$(this).attr('name')] = $(this).val();
+                    }
                 }
             }
         }).promise().done(function(){
@@ -458,6 +493,7 @@ export default class SCPP
         // Launch it!
         this.worker.postMessage({
             baseUrls    : this.baseUrls,
+            debug       : this.debug,
             language    : this.language,
             translate   : this.translate,
 

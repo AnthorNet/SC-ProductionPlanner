@@ -5,27 +5,29 @@ export default function ProductionPlannerWorker()
     self.baseUrls       = {};
     self.url            = [];
 
-    self.locale         = '';
+    self.debug          = false;
+    self.locale         = 'en';
     self.translate      = {};
 
     self.options        = {
-        viewMode            : 'REALISTIC',
+        viewMode                    : 'REALISTIC',
 
-        useManifolds        : 1,
-        mergeBuildings      : 1,
-        maxLevel            : null,
-        maxBeltSpeed        : 780,
-        maxPipeSpeed        : 600000,
+        useManifolds                : 1,
+        mergeBuildings              : 1,
+        maxLevel                    : null,
+        maxBeltSpeed                : 780,
+        maxPipeSpeed                : 600000,
 
-        minerType           : 2,
-        minerSpeed          : 'normal',
-        minerOverclock      : 100,
+        minerType                   : 2,
+        minerSpeed                  : 'normal',
 
-        pumpType            : 2,
-        pumpSpeed           : 'normal',
-        pumpOverclock       : 100,
+        pumpType                    : 2,
+        pumpSpeed                   : 'normal',
 
-        buildingOverclock   : 100
+        availablePowerShards        : 0,
+        allowMinerOverclocking      : true,
+        allowPumpOverclocking       : true,
+        allowBuildingOverclocking   : true,
     };
 
     self.buildings      = {};
@@ -48,6 +50,7 @@ export default function ProductionPlannerWorker()
 
         // Add default
         self.baseUrls       = e.data.baseUrls;
+        self.debug          = e.data.debug;
         self.locale         = e.data.locale;
         self.translate      = e.data.translate;
 
@@ -67,7 +70,6 @@ export default function ProductionPlannerWorker()
             {
                 self.url.push(itemKey + '/' + formData[itemKey]);
                 self.requestedItems[itemKey] = formData[itemKey];
-                delete formData[itemKey];
             }
         }
 
@@ -75,7 +77,6 @@ export default function ProductionPlannerWorker()
         {
             self.url.push('direction/' + formData.direction);
             self.graphDirection = formData.direction;
-            delete formData.direction;
         }
 
         if(formData.view !== undefined && formData.view !== 'REALISTIC')
@@ -96,10 +97,14 @@ export default function ProductionPlannerWorker()
                 delete formData.minerSpeed;
                 delete formData.pumpSpeed;
 
+                // Reset overclocking
+                delete formData.powerShards;
+                delete formData.minerOverclocking;
+                delete formData.pumpOverclocking;
+                delete formData.buildingOverclocking;
+
                 delete formData.maxLevel;
             }
-
-            delete formData.view;
         }
 
         if(formData.activatedMods !== undefined && formData.activatedMods.length > 0)
@@ -108,29 +113,29 @@ export default function ProductionPlannerWorker()
             {
                 self.url.push('mods/' + formData.activatedMods[i].data.id);
             }
-
-            delete formData.activatedMods;
         }
 
         if(formData.mergeBuildings !== undefined)
         {
             self.url.push('mergeBuildings/' + formData.mergeBuildings);
             self.options.mergeBuildings = parseInt(formData.mergeBuildings);
-            delete formData.mergeBuildings;
+
+            if(self.options.mergeBuildings !== 1)
+            {
+                delete formData.powerShards;
+            }
         }
 
         if(formData.useManifolds !== undefined)
         {
             self.url.push('useManifolds/' + formData.useManifolds);
             self.options.useManifolds = parseInt(formData.useManifolds);
-            delete formData.useManifolds;
         }
 
         if(formData.maxLevel !== undefined)
         {
             self.url.push('maxLevel/' + formData.maxLevel);
             self.options.maxLevel = parseInt(formData.maxLevel);
-            delete formData.maxLevel;
         }
 
         if(formData.maxBeltSpeed !== undefined)
@@ -141,7 +146,6 @@ export default function ProductionPlannerWorker()
             }
 
             self.options.maxBeltSpeed = parseInt(formData.maxBeltSpeed);
-            delete formData.maxBeltSpeed;
         }
 
         if(formData.maxPipeSpeed !== undefined)
@@ -152,20 +156,17 @@ export default function ProductionPlannerWorker()
             }
 
             self.options.maxPipeSpeed = parseInt(formData.maxPipeSpeed);
-            delete formData.maxPipeSpeed;
         }
 
         self.postMessage({type: 'updateLoaderText', text: 'Applying nodes purity to miners...'});
         if(formData.minerSpeed !== undefined)
         {
             let minerOptions = formData.minerSpeed.split(';');
-                delete formData.minerSpeed;
-
-            if(minerOptions.length === 2)
-            {
-                self.options.minerType   = parseInt(minerOptions[0]);
-                self.options.minerSpeed  = minerOptions[1];
-            }
+                if(minerOptions.length === 2)
+                {
+                    self.options.minerType   = parseInt(minerOptions[0]);
+                    self.options.minerSpeed  = minerOptions[1];
+                }
 
             if(self.options.minerType === 1)
             {
@@ -195,13 +196,11 @@ export default function ProductionPlannerWorker()
         if(formData.pumpSpeed !== undefined)
         {
             let pumpOptions = formData.pumpSpeed.split(';');
-                delete formData.pumpSpeed;
-
-            if(pumpOptions.length === 2)
-            {
-                self.options.pumpType   = parseInt(pumpOptions[0]);
-                self.options.pumpSpeed  = pumpOptions[1];
-            }
+                if(pumpOptions.length === 2)
+                {
+                    self.options.pumpType   = parseInt(pumpOptions[0]);
+                    self.options.pumpSpeed  = pumpOptions[1];
+                }
 
             if(self.options.pumpType !== 1 || self.options.pumpSpeed !== 'normal')
             {
@@ -224,7 +223,28 @@ export default function ProductionPlannerWorker()
                     self.url.push('altRecipes/' + recipeKey);
                 }
             }
-            delete formData.altRecipes;
+        }
+
+        if(self.options.mergeBuildings === 1 && formData.powerShards !== undefined && formData.powerShards > 0)
+        {
+            self.options.availablePowerShards = parseInt(formData.powerShards);
+            self.url.push('powerShards/' + formData.powerShards);
+
+            if(formData.minerOverclocking !== undefined && formData.minerOverclocking !== 1)
+            {
+                self.options.allowMinerOverclocking = false;
+                self.url.push('minerOverclocking/' + formData.minerOverclocking);
+            }
+            if(formData.pumpOverclocking !== undefined && formData.pumpOverclocking !== 1)
+            {
+                self.options.allowPumpOverclocking = false;
+                self.url.push('pumpOverclocking/' + formData.pumpOverclocking);
+            }
+            if(formData.buildingOverclocking !== undefined && formData.buildingOverclocking !== 1)
+            {
+                self.options.allowBuildingOverclocking = false;
+                self.url.push('buildingOverclocking/' + formData.buildingOverclocking);
+            }
         }
 
         self.postMessage({type: 'updateUrl', url: self.url});
@@ -245,13 +265,13 @@ export default function ProductionPlannerWorker()
 
             while(requestedQty >= maxMergedQty)
             {
-                self.startMainNode(itemKey, ((self.items[itemKey].category === 'liquid') ? maxMergedQty/1000 : maxMergedQty));
+                self.startMainNode(itemKey, ((self.items[itemKey].category === 'liquid') ? (maxMergedQty / 1000) : maxMergedQty));
                 requestedQty -= maxMergedQty;
             }
 
             if(requestedQty > 0)
             {
-                self.startMainNode(itemKey, ((self.items[itemKey].category === 'liquid') ? requestedQty/1000 : requestedQty));
+                self.startMainNode(itemKey, ((self.items[itemKey].category === 'liquid') ? (requestedQty / 1000) : requestedQty));
             }
         }
 
@@ -267,82 +287,141 @@ export default function ProductionPlannerWorker()
                 self.postMessage({type: 'updateLoaderText', text: 'Improving buildings efficiency...'});
             }
 
-            for(let i = 0; i < self.graphNodes.length; i++)
+            // Loop backwards so the miners/pumps are overclocked before the production buildings ;)
+            for(let i = self.graphNodes.length - 1; i >= 0 ; i--)
             {
-                for(let j = 0; j < self.graphNodes.length; j++)
+                for(let j = self.graphNodes.length - 1; j >= 0 ; j--)
                 {
                     if(i !== j && self.graphNodes[i] !== undefined && self.graphNodes[j] !== undefined) // Not yet tested...
                     {
-                        if(self.graphNodes[i].data.nodeType === 'productionBuilding')
+                        let mergingNodeData = self.graphNodes[i].data;
+                        let sourceNodeData  = self.graphNodes[j].data;
+
+                        if(
+                               mergingNodeData.nodeType === 'productionBuilding' && mergingNodeData.nodeType === sourceNodeData.nodeType && mergingNodeData.id !== sourceNodeData.id
+                            // Both nodes needs to have the same recipe ^^
+                            && mergingNodeData.recipe === sourceNodeData.recipe
+                            && sourceNodeData.clockSpeed === 100 // Not touched yet!
+                        )
                         {
-                            if(
-                                    self.graphNodes[i].data.nodeType === self.graphNodes[j].data.nodeType
-                                 && self.graphNodes[i].data.id !== self.graphNodes[j].data.id
-                                 && self.graphNodes[i].data.itemOut === self.graphNodes[j].data.itemOut
-                                 && self.graphNodes[i].data.recipe === self.graphNodes[j].data.recipe
-                            )
+                            // Can we apply some overclocking?
+                            if(self.options.mergeBuildings === 1 && self.options.availablePowerShards > 0 && (mergingNodeData.qtyUsed + sourceNodeData.qtyUsed) > mergingNodeData.qtyProduced && mergingNodeData.clockSpeed < 250)
                             {
-                                if(self.graphNodes[i].data.qtyUsed < self.graphNodes[i].data.qtyProduced || self.options.viewMode === 'SIMPLE')
-                                {
-                                    let mergedQty       = self.graphNodes[i].data.qtyUsed + self.graphNodes[j].data.qtyUsed;
-                                    let maxBeltSpeed    = self.options.maxBeltSpeed;
-                                        if(self.graphNodes[i].data.buildingType === 'Build_OilPump_C' || self.graphNodes[i].data.buildingType === 'Build_WaterPump_C')
-                                        {
-                                            maxBeltSpeed = self.options.maxPipeSpeed;
-                                        }
-
-                                    if((mergedQty <= self.graphNodes[i].data.qtyProduced && mergedQty <= maxBeltSpeed) || self.options.viewMode === 'SIMPLE')
+                                let allowSourceNodeOverclocking = false;
+                                    if(mergingNodeData.buildingType.startsWith('Build_MinerMk') && self.options.allowMinerOverclocking === true)
                                     {
-                                        let canMergeInputs  = true;
-                                        let inputQty        = {};
+                                        allowSourceNodeOverclocking = true;
+                                    }
+                                    if(mergingNodeData.buildingType.startsWith('Build_OilPump') && self.options.allowPumpOverclocking === true)
+                                    {
+                                        allowSourceNodeOverclocking = true;
+                                    }
+                                    if(mergingNodeData.buildingType.startsWith('Build_MinerMk') === false && mergingNodeData.buildingType.startsWith('Build_OilPump') === false && self.options.allowBuildingOverclocking === true)
+                                    {
+                                        allowSourceNodeOverclocking = true;
+                                    }
 
-                                        // Check if input edges works...
+                                    if(allowSourceNodeOverclocking === true)
+                                    {
+                                        while(self.options.availablePowerShards > 0 && (mergingNodeData.qtyUsed + sourceNodeData.qtyUsed) > mergingNodeData.qtyProduced && mergingNodeData.clockSpeed < 250)
+                                        {
+                                            self.options.availablePowerShards--;
+                                            mergingNodeData.clockSpeed += 50;
+
+                                            mergingNodeData.qtyProduced = mergingNodeData.qtyProducedDefault * mergingNodeData.clockSpeed / 100;
+                                        }
+                                    }
+                            }
+
+                            if(mergingNodeData.qtyUsed < mergingNodeData.qtyProduced || self.options.viewMode === 'SIMPLE')
+                            {
+                                let maxMergedQty        = mergingNodeData.qtyUsed + sourceNodeData.qtyUsed;
+                                let mergedPercentage    = 100;
+                                let maxBeltSpeed        = self.options.maxBeltSpeed;
+                                    if(mergingNodeData.buildingType === 'Build_OilPump_C' || mergingNodeData.buildingType === 'Build_WaterPump_C')
+                                    {
+                                        maxBeltSpeed = self.options.maxPipeSpeed;
+                                    }
+                                let mergedQty       = Math.min(maxMergedQty, mergingNodeData.qtyProduced, maxBeltSpeed);
+                                    if(self.options.viewMode === 'SIMPLE')
+                                    {
+                                        mergedQty   = maxMergedQty;
+                                    }
+                                    if(mergedQty < maxMergedQty)
+                                    {
+                                        mergedPercentage = (mergedQty - mergingNodeData.qtyUsed) / (maxMergedQty - mergingNodeData.qtyUsed) * 100;
+                                    }
+
+                                if((mergedQty <= mergingNodeData.qtyProduced && mergedQty <= maxBeltSpeed) || self.options.viewMode === 'SIMPLE')
+                                {
+                                    // Tests if input/output are allowed to that new speed...
+                                    let canMergeInputs  = true;
+                                    let inputQty        = {};
                                         for(let k = 0; k < self.graphEdges.length; k++)
                                         {
-                                            if(self.graphEdges[k].data.target === self.graphNodes[i].data.id || self.graphEdges[k].data.target === self.graphNodes[j].data.id)
+                                            if(self.graphEdges[k].data.target === mergingNodeData.id || self.graphEdges[k].data.target === sourceNodeData.id)
                                             {
                                                 if(inputQty[self.graphEdges[k].data.itemId] === undefined)
                                                 {
-                                                    inputQty[self.graphEdges[k].data.itemId] = self.graphEdges[k].data.qty;
-                                                }
-                                                else
-                                                {
-                                                    inputQty[self.graphEdges[k].data.itemId] += self.graphEdges[k].data.qty;
-                                                }
-                                            }
-                                        }
-                                        for(let itemId in inputQty)
-                                        {
-                                            let maxMergedQty    = self.options.maxBeltSpeed;
-                                                if(self.items[itemId].category === 'liquid')
-                                                {
-                                                    maxMergedQty = self.options.maxPipeSpeed;
+                                                    inputQty[self.graphEdges[k].data.itemId] = 0;
                                                 }
 
-                                            if(inputQty[itemId] > maxMergedQty)
-                                            {
-                                                canMergeInputs = false;
+                                                inputQty[self.graphEdges[k].data.itemId] += self.graphEdges[k].data.qty * (mergedPercentage / 100);
+
+                                                let currentMaxMergedQty = self.options.maxBeltSpeed;
+                                                    if(self.items[self.graphEdges[k].data.itemId].category === 'liquid')
+                                                    {
+                                                        currentMaxMergedQty = self.options.maxPipeSpeed;
+                                                    }
+
+                                                    if(inputQty[self.graphEdges[k].data.itemId] > currentMaxMergedQty)
+                                                    {
+                                                        canMergeInputs = false;
+                                                        break;
+                                                    }
                                             }
                                         }
 
-                                        if(canMergeInputs === true)
+                                    if(canMergeInputs === true && mergedPercentage === 100)
+                                    {
+                                        // Update edges!
+                                        for(let k = 0; k < self.graphEdges.length; k++)
                                         {
-                                            self.graphNodes[i].data.qtyUsed = mergedQty;
-
-                                            // Update edges!
-                                            for(let k = 0; k < self.graphEdges.length; k++)
+                                            if(self.graphEdges[k].data.source === sourceNodeData.id)
                                             {
-                                                if(self.graphEdges[k].data.source === self.graphNodes[j].data.id)
+                                                self.graphEdges[k].data.source = mergingNodeData.id;
+                                            }
+                                            if(self.graphEdges[k].data.target === sourceNodeData.id)
+                                            {
+                                                self.graphEdges[k].data.target = mergingNodeData.id;
+                                            }
+                                        }
+
+                                        delete self.graphNodes[j];
+
+                                        mergingNodeData.qtyUsed     = mergedQty;
+                                    }
+                                    if(canMergeInputs === true && mergedPercentage < 100)
+                                    {
+                                        sourceNodeData.qtyUsed  = sourceNodeData.qtyUsed * (mergedPercentage / 100);
+                                        mergingNodeData.qtyUsed = mergedQty;
+
+                                        for(let k = 0; k < self.graphEdges.length; k++)
+                                        {
+                                            if(self.graphEdges[k].data.source === sourceNodeData.id || self.graphEdges[k].data.target === sourceNodeData.id)
+                                            {
+                                                let removedQty = self.graphEdges[k].data.qty * (mergedPercentage / 100);
+                                                    self.graphEdges[k].data.qty -= removedQty;
+
+                                                for(let m = 0; m < self.graphEdges.length; m++)
                                                 {
-                                                    self.graphEdges[k].data.source = self.graphNodes[i].data.id;
-                                                }
-                                                if(self.graphEdges[k].data.target === self.graphNodes[j].data.id)
-                                                {
-                                                    self.graphEdges[k].data.target = self.graphNodes[i].data.id;
+                                                    if(m !== k && (self.graphEdges[m].data.source === mergingNodeData.id || self.graphEdges[m].data.target === mergingNodeData.id) && self.graphEdges[k].data.itemId === self.graphEdges[m].data.itemId)
+                                                    {
+                                                        self.graphEdges[m].data.qty += removedQty;
+                                                        break;
+                                                    }
                                                 }
                                             }
-
-                                            delete self.graphNodes[j];
                                         }
                                     }
                                 }
@@ -445,7 +524,6 @@ export default function ProductionPlannerWorker()
 
                     let currentMergerTarget         = mergers[i].origin.data.target;
                     let currentMergerId             = 'merger_' + mergerKey;
-                    //let currentMergerParent         = currentMergerId;
                     let currentMergerTargetQty      = mergers[i].mergerQty;
 
                     for(let k = 0; k < mergers[i].mergerSources.length; k++)
@@ -542,7 +620,6 @@ export default function ProductionPlannerWorker()
 
                     let currentSplitterSource       = splitters[i].origin.data.source;
                     let currentSplitterId           = 'splitter_' + splitterKey;
-                    //let currentSplitterParent       = currentSplitterId;
                     let currentSplitterSourceQty    = splitters[i].splitterQty;
 
                     for(let k = 0; k < splitters[i].splitterTargets.length; k++)
@@ -587,20 +664,9 @@ export default function ProductionPlannerWorker()
             }
         }
 
-        self.graphNodes = self.graphNodes.filter(function( element ) {
-            if(element !== undefined)
-            {
-                if(element.data.nodeType === 'productionBuilding')
-                {
-                    return element.data.qtyUsed >= 0.01;
-                }
-            }
-
-            return element !== undefined;
-        });
-        self.graphEdges = self.graphEdges.filter(function( element ) {
-            return element !== undefined && element.data.qty >= 0.01;
-        });
+        // Remove empty arrays ;)
+        self.graphNodes = self.graphNodes.filter(function(element){ return element !== undefined; });
+        self.graphEdges = self.graphEdges.filter(function(element){ return element !== undefined; });
 
         // Clean up NODES
         self.postMessage({type: 'updateLoaderText', text: 'Cleaning buildings...'});
@@ -670,7 +736,7 @@ export default function ProductionPlannerWorker()
 
             if(node.data.nodeType === 'productionBuilding')
             {
-                let performance                         = (node.data.qtyUsed / node.data.qtyProduced * 100);
+                let performance                         = (node.data.qtyUsed / node.data.qtyProducedDefault * 100);
                     self.graphNodes[i].data.performance = Math.round(performance);
                 let getColorForPercentage               = function(pct) {
                     pct /= 100;
@@ -702,20 +768,27 @@ export default function ProductionPlannerWorker()
                     };
                     return 'rgb(' + [color.r, color.g, color.b].join(',') + ')';
                 };
+                    self.graphNodes[i].data.performanceColor    = getColorForPercentage(Math.min(100, Math.round(performance)));
+                    self.graphNodes[i].data.borderWidth         = '15px';
 
                     if(self.options.viewMode === 'REALISTIC')
                     {
-
-                        self.graphNodes[i].data.performanceColor = getColorForPercentage(Math.round(performance));
                         self.graphNodes[i].data.label   = self.buildings[node.data.buildingType].name
                                                         + ' (' + new Intl.NumberFormat(self.locale).format(Math.round(performance)) + '%)'
-                                                        + '\n' + '(' + self.recipes[self.graphNodes[i].data.recipe].name + ')';
-                                                        //+ '(' + node.data.qtyUsed + '/' + node.data.qtyProduced + ')'; // DEBUG
+                                                        + '\n' + '(' + self.recipes[self.graphNodes[i].data.recipe].name + ')'
+                                                        //+ '\n' + '(' + node.data.id + ')' // DEBUG
+                                                        //+ '\n' + '(' + node.data.qtyUsed + '/' + node.data.qtyProduced + ')' // DEBUG
+                                                        ;
+
+                        if(self.graphNodes[i].data.clockSpeed > 100)
+                        {
+                            self.graphNodes[i].data.label  += '\n(' + Math.round((self.graphNodes[i].data.clockSpeed - 100) / 50) + ' power shards)';
+                            self.graphNodes[i].data.borderWidth = Math.round((self.graphNodes[i].data.clockSpeed - 100) / 50) * 15 + 15 + 'px';
+                        }
                     }
 
                     if(self.options.viewMode === 'SIMPLE')
                     {
-                        self.graphNodes[i].data.performanceColor = getColorForPercentage(Math.min(100, Math.round(performance)));
                         self.graphNodes[i].data.label   = 'x' + new Intl.NumberFormat(self.locale).format(Math.ceil(performance / 10) / 10)
                                                         + ' ' + self.buildings[node.data.buildingType].name
                                                         + '\n' + '(' + self.recipes[self.graphNodes[i].data.recipe].name + ')';
@@ -818,21 +891,21 @@ export default function ProductionPlannerWorker()
             }
 
             let roundedQty = +(Math.round(edge.data.qty * 100) / 100);
-            if(roundedQty < 0.1)
-            {
-                self.graphEdges[i].data.label = itemName + ' (< 0.1/min)';
-            }
-            else
-            {
-                if(self.items[edge.data.itemId].category === 'liquid')
+                if(roundedQty < 0.1)
                 {
-                    self.graphEdges[i].data.label = itemName + ' (' + Math.round(Math.round(roundedQty) / 1000) + ' m³/min)';
+                    self.graphEdges[i].data.label = itemName + ' (< 0.1/min)';
                 }
                 else
                 {
-                    self.graphEdges[i].data.label = itemName + ' (' + roundedQty + ' units/min)';
+                    if(self.items[edge.data.itemId].category === 'liquid')
+                    {
+                        self.graphEdges[i].data.label = itemName + ' (' + Math.round(Math.round(roundedQty) / 1000) + ' m³/min)';
+                    }
+                    else
+                    {
+                        self.graphEdges[i].data.label = itemName + ' (' + roundedQty + ' units/min)';
+                    }
                 }
-            }
 
             //TODO: Change width for MK++ belts...
 
@@ -939,9 +1012,12 @@ export default function ProductionPlannerWorker()
 
     self.buildCurrentNodeTree = function(options)
     {
-        console.log('buildCurrentNodeTree', options.qty, options.recipe, options.level);
+        if(self.debug === true)
+        {
+            console.log('buildCurrentNodeTree', options.qty, options.recipe, options.level);
+        }
 
-        let buildingId              = self.getProductionBuildingFromRecipeId(options.recipe);
+        let buildingId = self.getProductionBuildingFromRecipeId(options.recipe);
 
             if(buildingId !== null)
             {
@@ -1003,14 +1079,16 @@ export default function ProductionPlannerWorker()
 
                     // Push new node!
                     self.graphNodes.push({data: {
-                        id              : currentParentVisId,
-                        nodeType        : 'productionBuilding',
-                        buildingType    : buildingId,
-                        recipe          : options.recipe,
-                        itemOut         : options.id,
-                        qtyProduced     : qtyProduced,
-                        qtyUsed         : qtyUsed,
-                        image           : self.buildings[buildingId].image
+                        id                  : currentParentVisId,
+                        nodeType            : 'productionBuilding',
+                        buildingType        : buildingId,
+                        recipe              : options.recipe,
+                        itemOut             : options.id,
+                        qtyProducedDefault  : qtyProduced,
+                        qtyProduced         : qtyProduced,
+                        qtyUsed             : qtyUsed,
+                        clockSpeed          : 100,
+                        image               : self.buildings[buildingId].image
                     }});
 
                     // Push new edges between node and parent

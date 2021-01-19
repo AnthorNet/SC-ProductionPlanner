@@ -288,162 +288,151 @@ export default function ProductionPlannerWorker()
             }
 
             // Loop backwards so the miners/pumps are overclocked before the production buildings ;)
-            for(let i = self.graphNodes.length - 1; i >= 0 ; i--)
+            for(let pass = 1; pass <= 2; pass++)
             {
-                for(let j = self.graphNodes.length - 1; j >= 0 ; j--)
+                for(let i = self.graphNodes.length - 1; i >= 0 ; i--)
                 {
-                    if(i !== j && self.graphNodes[i] !== undefined && self.graphNodes[j] !== undefined) // Not yet tested...
+                    for(let j = self.graphNodes.length - 1; j >= 0 ; j--)
                     {
-                        let mergingNodeData = self.graphNodes[i].data;
-                        let sourceNodeData  = self.graphNodes[j].data;
-
-                        if(
-                               mergingNodeData.nodeType === 'productionBuilding' && mergingNodeData.nodeType === sourceNodeData.nodeType && mergingNodeData.id !== sourceNodeData.id
-                            // Both nodes needs to have the same recipe ^^
-                            && mergingNodeData.recipe === sourceNodeData.recipe
-                            && sourceNodeData.clockSpeed === 100 // Not touched yet!
-                        )
+                        if(i !== j && self.graphNodes[i] !== undefined && self.graphNodes[j] !== undefined) // Not yet tested...
                         {
-                            // Can we apply some overclocking?
-                            if(self.options.mergeBuildings === 1 && self.options.availablePowerShards > 0 && (mergingNodeData.qtyUsed + sourceNodeData.qtyUsed) > mergingNodeData.qtyProduced && mergingNodeData.clockSpeed < 250)
+                            let mergingNodeData = self.graphNodes[i].data;
+                            let sourceNodeData  = self.graphNodes[j].data;
+
+                            if(
+                                   mergingNodeData.nodeType === 'productionBuilding' && mergingNodeData.nodeType === sourceNodeData.nodeType && mergingNodeData.id !== sourceNodeData.id
+                                // Both nodes needs to have the same recipe ^^
+                                && mergingNodeData.recipe === sourceNodeData.recipe
+                                && sourceNodeData.clockSpeed === 100 // Not touched yet!
+                            )
                             {
-                                let allowSourceNodeOverclocking = false;
-                                    if(mergingNodeData.buildingType.startsWith('Build_MinerMk') && self.options.allowMinerOverclocking === true)
-                                    {
-                                        allowSourceNodeOverclocking = true;
-                                    }
-                                    if(mergingNodeData.buildingType.startsWith('Build_OilPump') && self.options.allowPumpOverclocking === true)
-                                    {
-                                        allowSourceNodeOverclocking = true;
-                                    }
-                                    if(mergingNodeData.buildingType.startsWith('Build_MinerMk') === false && mergingNodeData.buildingType.startsWith('Build_OilPump') === false && self.options.allowBuildingOverclocking === true)
-                                    {
-                                        allowSourceNodeOverclocking = true;
-                                    }
-
-                                    if(allowSourceNodeOverclocking === true)
-                                    {
-                                        while(self.options.availablePowerShards > 0 && (mergingNodeData.qtyUsed + sourceNodeData.qtyUsed) > mergingNodeData.qtyProduced && mergingNodeData.clockSpeed < 250)
-                                        {
-                                            self.options.availablePowerShards--;
-                                            mergingNodeData.clockSpeed += 50;
-
-                                            mergingNodeData.qtyProduced = mergingNodeData.qtyProducedDefault * mergingNodeData.clockSpeed / 100;
-                                        }
-                                    }
-                            }
-
-                            if(mergingNodeData.qtyUsed < mergingNodeData.qtyProduced || self.options.viewMode === 'SIMPLE')
-                            {
-                                let maxMergedQty        = mergingNodeData.qtyUsed + sourceNodeData.qtyUsed;
-                                let mergedPercentage    = 100;
-                                let maxBeltSpeed        = self.options.maxBeltSpeed;
-                                    if(mergingNodeData.buildingType === 'Build_OilPump_C' || mergingNodeData.buildingType === 'Build_WaterPump_C')
-                                    {
-                                        maxBeltSpeed = self.options.maxPipeSpeed;
-                                    }
-                                let mergedQty       = Math.min(maxMergedQty, mergingNodeData.qtyProduced, maxBeltSpeed);
-                                    if(self.options.viewMode === 'SIMPLE')
-                                    {
-                                        mergedQty   = maxMergedQty;
-                                    }
-                                    if(mergedQty < maxMergedQty)
-                                    {
-                                        mergedPercentage = (mergedQty - mergingNodeData.qtyUsed) / (maxMergedQty - mergingNodeData.qtyUsed) * 100;
-                                    }
-
-                                if((mergedQty <= mergingNodeData.qtyProduced && mergedQty <= maxBeltSpeed) || self.options.viewMode === 'SIMPLE')
+                                // Can we apply some overclocking?
+                                if(self.options.mergeBuildings === 1 && self.options.availablePowerShards > 0 && (mergingNodeData.qtyUsed + sourceNodeData.qtyUsed) > mergingNodeData.qtyProduced && mergingNodeData.clockSpeed < 250)
                                 {
-                                    // Tests if input/output are allowed to that new speed...
-                                    let canMergeInputs  = true;
-                                    let inputQty        = {};
-                                        for(let k = 0; k < self.graphEdges.length; k++)
+                                    let allowSourceNodeOverclocking = false;
+                                        if(mergingNodeData.buildingType.startsWith('Build_MinerMk') && self.options.allowMinerOverclocking === true)
                                         {
-                                            if(self.graphEdges[k].data.target === mergingNodeData.id || self.graphEdges[k].data.target === sourceNodeData.id)
+                                            allowSourceNodeOverclocking = true;
+                                        }
+                                        if(mergingNodeData.buildingType.startsWith('Build_OilPump') && self.options.allowPumpOverclocking === true)
+                                        {
+                                            allowSourceNodeOverclocking = true;
+                                        }
+                                        if(mergingNodeData.buildingType.startsWith('Build_MinerMk') === false && mergingNodeData.buildingType.startsWith('Build_OilPump') === false && self.options.allowBuildingOverclocking === true)
+                                        {
+                                            allowSourceNodeOverclocking = true;
+                                        }
+
+                                        if(allowSourceNodeOverclocking === true)
+                                        {
+                                            while(self.options.availablePowerShards > 0 && (mergingNodeData.qtyUsed + sourceNodeData.qtyUsed) > mergingNodeData.qtyProduced && mergingNodeData.clockSpeed < 250)
                                             {
-                                                if(inputQty[self.graphEdges[k].data.itemId] === undefined)
+                                                self.options.availablePowerShards--;
+                                                mergingNodeData.clockSpeed += 50;
+
+                                                mergingNodeData.qtyProduced = mergingNodeData.qtyProducedDefault * mergingNodeData.clockSpeed / 100;
+                                            }
+                                        }
+                                }
+
+                                if(mergingNodeData.qtyUsed < mergingNodeData.qtyProduced || self.options.viewMode === 'SIMPLE')
+                                {
+                                    let maxMergedQty        = mergingNodeData.qtyUsed + sourceNodeData.qtyUsed;
+                                    let mergedPercentage    = 100;
+                                    let maxBeltSpeed        = self.options.maxBeltSpeed;
+                                        if(mergingNodeData.buildingType === 'Build_OilPump_C' || mergingNodeData.buildingType === 'Build_WaterPump_C')
+                                        {
+                                            maxBeltSpeed = self.options.maxPipeSpeed;
+                                        }
+                                    let mergedQty       = Math.min(maxMergedQty, mergingNodeData.qtyProduced, maxBeltSpeed);
+                                        if(self.options.viewMode === 'SIMPLE')
+                                        {
+                                            mergedQty   = maxMergedQty;
+                                        }
+                                        if(mergedQty < maxMergedQty)
+                                        {
+                                            mergedPercentage = (mergedQty - mergingNodeData.qtyUsed) / (maxMergedQty - mergingNodeData.qtyUsed) * 100;
+                                        }
+
+                                    if((mergedQty <= mergingNodeData.qtyProduced && mergedQty <= maxBeltSpeed) || self.options.viewMode === 'SIMPLE')
+                                    {
+                                        // Tests if input/output are allowed to that new speed...
+                                        let canMergeInputs  = self.testEdgesMaxSpeeds(mergingNodeData, sourceNodeData, mergedPercentage);
+                                            if(canMergeInputs === true && mergedPercentage === 100)
+                                            {
+                                                // Update edges!
+                                                for(let k = 0; k < self.graphEdges.length; k++)
                                                 {
-                                                    inputQty[self.graphEdges[k].data.itemId] = 0;
+                                                    if(self.graphEdges[k].data.source === sourceNodeData.id)
+                                                    {
+                                                        self.graphEdges[k].data.source = mergingNodeData.id;
+                                                    }
+                                                    if(self.graphEdges[k].data.target === sourceNodeData.id)
+                                                    {
+                                                        self.graphEdges[k].data.target = mergingNodeData.id;
+                                                    }
                                                 }
 
-                                                inputQty[self.graphEdges[k].data.itemId] += self.graphEdges[k].data.qty * (mergedPercentage / 100);
+                                                delete self.graphNodes[j];
 
-                                                let currentMaxMergedQty = self.options.maxBeltSpeed;
-                                                    if(self.items[self.graphEdges[k].data.itemId].category === 'liquid')
-                                                    {
-                                                        currentMaxMergedQty = self.options.maxPipeSpeed;
-                                                    }
-
-                                                    if(inputQty[self.graphEdges[k].data.itemId] > currentMaxMergedQty)
-                                                    {
-                                                        canMergeInputs = false;
-                                                        break;
-                                                    }
+                                                mergingNodeData.qtyUsed     = mergedQty;
                                             }
-                                        }
-
-                                    if(canMergeInputs === true && mergedPercentage === 100)
-                                    {
-                                        // Update edges!
-                                        for(let k = 0; k < self.graphEdges.length; k++)
+                                        /**/
+                                        if(canMergeInputs === true && mergedPercentage < 100 && pass === 2)
                                         {
-                                            if(self.graphEdges[k].data.source === sourceNodeData.id)
+                                            mergingNodeData.qtyUsed  = mergedQty;
+                                            sourceNodeData.qtyUsed  -= sourceNodeData.qtyUsed * (mergedPercentage / 100);
+
+                                            if(sourceNodeData.qtyUsed === 0)
                                             {
-                                                self.graphEdges[k].data.source = mergingNodeData.id;
+                                                delete self.graphNodes[j];
                                             }
-                                            if(self.graphEdges[k].data.target === sourceNodeData.id)
+                                            else
                                             {
-                                                self.graphEdges[k].data.target = mergingNodeData.id;
-                                            }
-                                        }
+                                                console.log(mergingNodeData.id, sourceNodeData.id, mergedPercentage, sourceNodeData.qtyUsed, mergingNodeData.qtyUsed);
 
-                                        delete self.graphNodes[j];
-
-                                        mergingNodeData.qtyUsed     = mergedQty;
-                                    }
-                                    /*
-                                    if(canMergeInputs === true && mergedPercentage < 100)
-                                    {
-                                        sourceNodeData.qtyUsed  = sourceNodeData.qtyUsed * (mergedPercentage / 100);
-                                        mergingNodeData.qtyUsed = mergedQty;
-
-                                        for(let k = 0; k < self.graphEdges.length; k++)
-                                        {
-                                            if(self.graphEdges[k].data.source === sourceNodeData.id || self.graphEdges[k].data.target === sourceNodeData.id)
-                                            {
-                                                let removedQty = self.graphEdges[k].data.qty * (mergedPercentage / 100);
-                                                    self.graphEdges[k].data.qty -= removedQty;
-
-                                                for(let m = 0; m < self.graphEdges.length; m++)
+                                                for(let k = 0; k < self.graphEdges.length; k++)
                                                 {
-                                                    if(m !== k && (self.graphEdges[m].data.source === mergingNodeData.id || self.graphEdges[m].data.target === mergingNodeData.id) && self.graphEdges[k].data.itemId === self.graphEdges[m].data.itemId)
+                                                    if(self.graphEdges[k] !== undefined)
                                                     {
-                                                        self.graphEdges[m].data.qty += removedQty;
-                                                        break;
+                                                        if(self.graphEdges[k].data.source === sourceNodeData.id || self.graphEdges[k].data.target === sourceNodeData.id)
+                                                        {
+                                                            let removedQty = self.graphEdges[k].data.qty * (mergedPercentage / 100);
+                                                                self.graphEdges[k].data.qty -= removedQty;
+
+                                                            for(let m = 0; m < self.graphEdges.length; m++)
+                                                            {
+                                                                if(m !== k && (self.graphEdges[m].data.source === mergingNodeData.id || self.graphEdges[m].data.target === mergingNodeData.id) && self.graphEdges[k].data.itemId === self.graphEdges[m].data.itemId)
+                                                                {
+                                                                    self.graphEdges[m].data.qty += removedQty;
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
+                                        /**/
                                     }
-                                    */
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // Update previous merged edges...
-            for(let i = 0; i < self.graphEdges.length; i++)
-            {
-                for(let j = 0; j < self.graphEdges.length; j++)
+                // Update previous merged edges...
+                for(let i = 0; i < self.graphEdges.length; i++)
                 {
-                    if(i !== j && self.graphEdges[i] !== undefined && self.graphEdges[j] !== undefined) // Not yet tested...
+                    for(let j = 0; j < self.graphEdges.length; j++)
                     {
-                        if(self.graphEdges[i].data.source === self.graphEdges[j].data.source && self.graphEdges[i].data.target === self.graphEdges[j].data.target)
+                        if(i !== j && self.graphEdges[i] !== undefined && self.graphEdges[j] !== undefined) // Not yet tested...
                         {
-                            self.graphEdges[i].data.qty += self.graphEdges[j].data.qty;
-                            delete self.graphEdges[j];
+                            if(self.graphEdges[i].data.source === self.graphEdges[j].data.source && self.graphEdges[i].data.target === self.graphEdges[j].data.target)
+                            {
+                                self.graphEdges[i].data.qty += self.graphEdges[j].data.qty;
+                                delete self.graphEdges[j];
+                            }
                         }
                     }
                 }
@@ -1846,5 +1835,38 @@ export default function ProductionPlannerWorker()
         }
 
         return null;
+    };
+
+    self.testEdgesMaxSpeeds = function(mergingNodeData, sourceNodeData, mergedPercentage)
+    {
+        let inputQty        = {};
+            for(let k = 0; k < self.graphEdges.length; k++)
+            {
+                if(self.graphEdges[k] !== undefined)
+                {
+                    if(self.graphEdges[k].data.target === mergingNodeData.id || self.graphEdges[k].data.target === sourceNodeData.id)
+                    {
+                        if(inputQty[self.graphEdges[k].data.itemId] === undefined)
+                        {
+                            inputQty[self.graphEdges[k].data.itemId] = 0;
+                        }
+
+                        inputQty[self.graphEdges[k].data.itemId] += self.graphEdges[k].data.qty * (mergedPercentage / 100);
+
+                        let currentMaxMergedQty = self.options.maxBeltSpeed;
+                            if(self.items[self.graphEdges[k].data.itemId].category === 'liquid')
+                            {
+                                currentMaxMergedQty = self.options.maxPipeSpeed;
+                            }
+
+                            if(inputQty[self.graphEdges[k].data.itemId] > currentMaxMergedQty)
+                            {
+                                return false;
+                            }
+                    }
+                }
+            }
+
+        return true;
     };
 };

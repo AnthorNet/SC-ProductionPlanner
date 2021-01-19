@@ -401,6 +401,7 @@ export default function ProductionPlannerWorker()
 
                                         mergingNodeData.qtyUsed     = mergedQty;
                                     }
+                                    /*
                                     if(canMergeInputs === true && mergedPercentage < 100)
                                     {
                                         sourceNodeData.qtyUsed  = sourceNodeData.qtyUsed * (mergedPercentage / 100);
@@ -424,6 +425,7 @@ export default function ProductionPlannerWorker()
                                             }
                                         }
                                     }
+                                    */
                                 }
                             }
                         }

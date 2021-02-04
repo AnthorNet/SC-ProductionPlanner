@@ -1839,6 +1839,36 @@ export default function ProductionPlannerWorker()
                             {
                                 return -1;
                             }
+
+                            let produceA = null;
+                            let produceB = null;
+
+                                for(let item in self.recipes[a].produce)
+                                {
+                                    if(item === itemId)
+                                    {
+                                        produceA = (60 / self.recipes[a].mManufactoringDuration * self.recipes[a].produce[item]);
+                                        break;
+                                    }
+                                }
+                                for(let item in self.recipes[b].produce)
+                                {
+                                    if(item === itemId)
+                                    {
+                                        produceB = (60 / self.recipes[b].mManufactoringDuration * self.recipes[b].produce[item]);
+                                        break;
+                                    }
+                                }
+
+                            if(produceA !== null && produceB !== null)
+                            {
+                                if(produceA === produceB)
+                                {
+                                    return self.recipes[a].name.localeCompare(self.recipes[b].name);
+                                }
+
+                                return produceB - produceA;
+                            }
                         }
 
                     return aLength - bLength;

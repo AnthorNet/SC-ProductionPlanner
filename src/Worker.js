@@ -1018,7 +1018,6 @@ export default function ProductionPlannerWorker()
             {
                 let productionCraftingTime  = 4,
                     productionPieces        = 1,
-                    maxProductionSpeed      = self.options.maxBeltSpeed,
                     productionRecipe        = false;
 
                     self.nodeIdKey++;
@@ -1064,11 +1063,6 @@ export default function ProductionPlannerWorker()
                                 if(producedClassName === self.items[options.id].className)
                                 {
                                     productionPieces        = self.recipes[options.recipe].produce[producedClassName];
-
-                                    if(self.items[options.id].category === 'liquid')
-                                    {
-                                        maxProductionSpeed = self.options.maxPipeSpeed;
-                                    }
                                 }
                             }
                         }
@@ -1076,10 +1070,10 @@ export default function ProductionPlannerWorker()
 
                     let currentParentVisId  = buildingId + '_'  + self.nodeIdKey;
                     let qtyProduced         = (60 / productionCraftingTime * productionPieces);
-                    let qtyUsed             = Math.min(maxProductionSpeed, qtyProduced, options.qty);
+                    let qtyUsed             = Math.min(qtyProduced, options.qty);
 
                         // Should we reduce builgind speed for belts?
-                        if(productionRecipe !== false)
+                        if(productionRecipe !== false && self.options.viewMode !== 'SIMPLE')
                         {
                             let isTooFast = true;
                                 while(isTooFast === true)
@@ -1090,10 +1084,17 @@ export default function ProductionPlannerWorker()
                                     {
                                         for(let recipeItemClassName in productionRecipe)
                                         {
-                                            let requiredQty     = (60 / productionCraftingTime * productionRecipe[recipeItemClassName]) * qtyUsed / qtyProduced;
+                                            let requiredQty             = (60 / productionCraftingTime * productionRecipe[recipeItemClassName]) * qtyUsed / qtyProduced;
+                                            let recipeItemId            = self.getItemIdFromClassName(recipeItemClassName);
+                                            let maxProductionSpeed      = self.options.maxBeltSpeed;
+
+                                                if(self.items[recipeItemId].category === 'liquid')
+                                                {
+                                                    maxProductionSpeed = self.options.maxPipeSpeed;
+                                                }
                                                 if(requiredQty > maxProductionSpeed)
                                                 {
-                                                    console.log(recipeItemClassName, requiredQty, maxProductionSpeed, qtyProduced);
+                                                    console.log(recipeItemClassName, recipeItemId, requiredQty, maxProductionSpeed, qtyProduced);
                                                     isTooFast = true;
                                                     qtyUsed--;
                                                     break;

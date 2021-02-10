@@ -1094,7 +1094,6 @@ export default function ProductionPlannerWorker()
                                                 }
                                                 if(requiredQty > maxProductionSpeed)
                                                 {
-                                                    console.log(recipeItemClassName, recipeItemId, requiredQty, maxProductionSpeed, qtyProduced);
                                                     isTooFast = true;
                                                     qtyUsed--;
                                                     break;
@@ -1762,6 +1761,20 @@ export default function ProductionPlannerWorker()
         return null;
     };
 
+    self.isAlternateRecipe = function(recipe)
+    {
+        if(recipe.className === '/Game/FactoryGame/Recipes/AlternateRecipes/Parts/Recipe_Alternate_Turbofuel.Recipe_Alternate_Turbofuel_C')
+        {
+            return false;
+        }
+        if(recipe.className.startsWith('/Game/FactoryGame/Recipes/AlternateRecipes'))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     self.getRecipeToProduceItemId = function(itemId)
     {
         let currentItemClassName    = self.items[itemId].className;
@@ -1792,7 +1805,7 @@ export default function ProductionPlannerWorker()
 
             for(let recipeKey in self.recipes)
             {
-                if((recipeKey.indexOf('Alternate_') === -1 || recipeKey === 'Recipe_Alternate_Turbofuel_C') && recipeKey !== 'Recipe_PureAluminumIngot_C')
+                if(self.isAlternateRecipe(self.recipes[recipeKey]) === false)
                 {
                     if(self.recipes[recipeKey].produce !== undefined)
                     {
@@ -1808,11 +1821,11 @@ export default function ProductionPlannerWorker()
             {
                 // Order by produce length
                 availableRecipes.sort(function(a, b){
-                    if(a.search('Recipe_Residual') !== -1 && self.recipes[b].name.search('Alternate:') === -1)
+                    if(a.search('Recipe_Residual') !== -1 && self.isAlternateRecipe(self.recipes[b]) === false)
                     {
                         return 1;
                     }
-                    if(self.recipes[a].name.search('Alternate:') === -1 && b.search('Recipe_Residual') !== -1)
+                    if(self.isAlternateRecipe(self.recipes[a]) === false === -1 && b.search('Recipe_Residual') !== -1)
                     {
                         return -1;
                     }
@@ -1831,11 +1844,11 @@ export default function ProductionPlannerWorker()
 
                         if(aLength === bLength)
                         {
-                            if(self.recipes[a].name.search('Alternate:') !== -1 && self.recipes[b].name.search('Alternate:') === -1)
+                            if(self.isAlternateRecipe(self.recipes[a]) === true && self.isAlternateRecipe(self.recipes[b]) === false)
                             {
                                 return 1;
                             }
-                            if(self.recipes[a].name.search('Alternate:') === -1 && self.recipes[b].name.search('Alternate:') !== -1)
+                            if(self.isAlternateRecipe(self.recipes[a]) === false && self.isAlternateRecipe(self.recipes[b]) === true)
                             {
                                 return -1;
                             }

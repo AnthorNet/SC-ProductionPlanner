@@ -40,14 +40,6 @@ export default class SCPP
             this.toolsData      = data.toolsData;
             this.recipesData    = data.recipesData;
 
-            for(let recipeId in this.recipesData)
-            {
-                if(this.recipesData[recipeId].className !== undefined && this.recipesData[recipeId].className.startsWith('/Game/FactoryGame/') === false)
-                {
-                    this.recipesData[recipeId].className = '/Game/FactoryGame/Recipes/' + this.recipesData[recipeId].className;
-                }
-            }
-
             if(this.activatedMods.length > 0)
             {
                 for(let i = 0; i < this.activatedMods.length; i++)

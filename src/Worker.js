@@ -792,6 +792,10 @@ export default function ProductionPlannerWorker()
 
                 // Calculate required power!
                 let powerUsage              = self.buildings[node.data.buildingType].powerUsed * Math.pow(performance / 100, 1.6);
+                    if(self.options.viewMode === 'SIMPLE')
+                    {
+                        powerUsage              = self.buildings[node.data.buildingType].powerUsed * performance / 100;
+                    }
                     self.requiredPower     += powerUsage;
 
                 // Add to items list

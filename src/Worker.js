@@ -257,7 +257,7 @@ export default function ProductionPlannerWorker()
             let requestedQty = self.requestedItems[itemKey];
             let maxMergedQty = self.options.maxBeltSpeed;
 
-                if(self.items[itemKey].category === 'liquid')
+                if(self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas')
                 {
                     requestedQty *= 1000;
                     maxMergedQty = self.options.maxPipeSpeed;
@@ -265,13 +265,13 @@ export default function ProductionPlannerWorker()
 
             while(requestedQty >= maxMergedQty)
             {
-                self.startMainNode(itemKey, ((self.items[itemKey].category === 'liquid') ? (maxMergedQty / 1000) : maxMergedQty));
+                self.startMainNode(itemKey, ((self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas') ? (maxMergedQty / 1000) : maxMergedQty));
                 requestedQty -= maxMergedQty;
             }
 
             if(requestedQty > 0)
             {
-                self.startMainNode(itemKey, ((self.items[itemKey].category === 'liquid') ? (requestedQty / 1000) : requestedQty));
+                self.startMainNode(itemKey, ((self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas') ? (requestedQty / 1000) : requestedQty));
             }
         }
 
@@ -463,7 +463,7 @@ export default function ProductionPlannerWorker()
                 let mergerQty       = 0;
                 let maxMergedQty    = self.options.maxBeltSpeed;
 
-                    if(self.items[parentEdge.data.itemId].category === 'liquid')
+                    if(self.items[parentEdge.data.itemId].category === 'liquid' || self.items[parentEdge.data.itemId].category === 'gas')
                     {
                         maxMergedQty = self.options.maxPipeSpeed;
                     }
@@ -671,7 +671,7 @@ export default function ProductionPlannerWorker()
 
             if(node.data.nodeType === 'mainNode')
             {
-                if(self.items[node.data.itemId].category === 'liquid')
+                if(self.items[node.data.itemId].category === 'liquid' || self.items[node.data.itemId].category === 'gas')
                 {
                     self.graphNodes[i].data.label   = new Intl.NumberFormat(self.locale).format(Math.round(Math.round(node.data.qty) / 1000))
                                                     + ' m³ ' + self.items[node.data.itemId].name;
@@ -685,7 +685,7 @@ export default function ProductionPlannerWorker()
 
             if(node.data.nodeType === 'merger')
             {
-                if(self.items[node.data.itemId].category === 'liquid')
+                if(self.items[node.data.itemId].category === 'liquid' || self.items[node.data.itemId].category === 'gas')
                 {
                     self.graphNodes[i].data.label   = self.buildings.Build_PipelineJunction_Cross_C.name + '\n(' + self.items[node.data.itemId].name + ')';
                     self.graphNodes[i].data.image   = self.buildings.Build_PipelineJunction_Cross_C.image;
@@ -708,7 +708,7 @@ export default function ProductionPlannerWorker()
 
             if(node.data.nodeType === 'splitter')
             {
-                if(self.items[node.data.itemId].category === 'liquid')
+                if(self.items[node.data.itemId].category === 'liquid' || self.items[node.data.itemId].category === 'gas')
                 {
                     self.graphNodes[i].data.label   = self.buildings.Build_PipelineJunction_Cross_C.name + '\n(' + self.items[node.data.itemId].name + ')';
                     self.graphNodes[i].data.image   = self.buildings.Build_PipelineJunction_Cross_C.image;
@@ -801,7 +801,7 @@ export default function ProductionPlannerWorker()
                 // Add to items list
                 if(self.listItems[node.data.itemOut] === undefined)
                 {
-                    if(self.items[node.data.itemOut].category === 'liquid')
+                    if(self.items[node.data.itemOut].category === 'liquid' || self.items[node.data.itemOut].category === 'gas')
                     {
                         self.listItems[node.data.itemOut] = node.data.qtyUsed / 1000;
                     }
@@ -812,7 +812,7 @@ export default function ProductionPlannerWorker()
                 }
                 else
                 {
-                    if(self.items[node.data.itemOut].category === 'liquid')
+                    if(self.items[node.data.itemOut].category === 'liquid' || self.items[node.data.itemOut].category === 'gas')
                     {
                         self.listItems[node.data.itemOut] += node.data.qtyUsed / 1000;
                     }
@@ -835,7 +835,7 @@ export default function ProductionPlannerWorker()
 
             if(node.data.nodeType === 'lastNodeItem' || node.data.nodeType === 'byProductItem')
             {
-                if(self.items[node.data.itemId].category === 'liquid')
+                if(self.items[node.data.itemId].category === 'liquid' || self.items[node.data.itemId].category === 'gas')
                 {
                     self.graphNodes[i].data.label   = new Intl.NumberFormat(self.locale).format(Math.round(Math.round(node.data.neededQty) / 1000))
                                                     + ' m³ ' + self.items[node.data.itemId].name;
@@ -854,7 +854,7 @@ export default function ProductionPlannerWorker()
                 // Add to items list
                 if(self.listItems[node.data.itemId] === undefined)
                 {
-                    if(self.items[node.data.itemId].category === 'liquid')
+                    if(self.items[node.data.itemId].category === 'liquid' || self.items[node.data.itemId].category === 'gas')
                     {
                         self.listItems[node.data.itemId] = node.data.neededQty / 1000;
                     }
@@ -865,7 +865,7 @@ export default function ProductionPlannerWorker()
                 }
                 else
                 {
-                    if(self.items[node.data.itemId].category === 'liquid')
+                    if(self.items[node.data.itemId].category === 'liquid' || self.items[node.data.itemId].category === 'gas')
                     {
                         self.listItems[node.data.itemId] += node.data.neededQty / 1000;
                     }
@@ -896,7 +896,7 @@ export default function ProductionPlannerWorker()
                 }
                 else
                 {
-                    if(self.items[edge.data.itemId].category === 'liquid')
+                    if(self.items[edge.data.itemId].category === 'liquid' || self.items[edge.data.itemId].category === 'gas')
                     {
                         self.graphEdges[i].data.label = itemName + ' (' + Math.round(Math.round(roundedQty) / 1000) + ' m³/min)';
                     }
@@ -926,7 +926,7 @@ export default function ProductionPlannerWorker()
 
         let currentRecipe           = self.getRecipeToProduceItemId(itemKey);
 
-            if(self.items[itemKey].category === 'liquid')
+            if(self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas')
             {
                 mainRequiredQty *= 1000;
             }
@@ -1092,7 +1092,7 @@ export default function ProductionPlannerWorker()
                                             let recipeItemId            = self.getItemIdFromClassName(recipeItemClassName);
                                             let maxProductionSpeed      = self.options.maxBeltSpeed;
 
-                                                if(self.items[recipeItemId].category === 'liquid')
+                                                if(self.items[recipeItemId].category === 'liquid' || self.items[recipeItemId].category === 'gas')
                                                 {
                                                     maxProductionSpeed = self.options.maxPipeSpeed;
                                                 }
@@ -1545,7 +1545,7 @@ export default function ProductionPlannerWorker()
                     html.push('<td width="40"><img src="' + self.items[itemId].image + '" style="width: 40px;" /></td>');
                     html.push('<td class="align-middle">');
 
-                        if(self.items[itemId].category === 'liquid')
+                        if(self.items[itemId].category === 'liquid' || self.items[itemId].category === 'gas')
                         {
                             html.push(new Intl.NumberFormat(self.locale).format(self.listItems[itemId]) + ' m³/min of ');
                         }
@@ -1936,7 +1936,7 @@ export default function ProductionPlannerWorker()
                         inputQty[self.graphEdges[k].data.itemId] += self.graphEdges[k].data.qty * (mergedPercentage / 100);
 
                         let currentMaxMergedQty = self.options.maxBeltSpeed;
-                            if(self.items[self.graphEdges[k].data.itemId].category === 'liquid')
+                            if(self.items[self.graphEdges[k].data.itemId].category === 'liquid' || self.items[self.graphEdges[k].data.itemId].category === 'gas')
                             {
                                 currentMaxMergedQty = self.options.maxPipeSpeed;
                             }

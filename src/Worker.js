@@ -1826,6 +1826,10 @@ export default function ProductionPlannerWorker()
         {
             return true;
         }
+        if(recipe.className.search('Recipe_Residual') !== -1)
+        {
+            return true;
+        }
 
         return false;
     }
@@ -1876,15 +1880,6 @@ export default function ProductionPlannerWorker()
             {
                 // Order by produce length
                 availableRecipes.sort(function(a, b){
-                    if(a.search('Recipe_Residual') !== -1 && self.isAlternateRecipe(self.recipes[b]) === false)
-                    {
-                        return 1;
-                    }
-                    if(self.isAlternateRecipe(self.recipes[a]) === false === -1 && b.search('Recipe_Residual') !== -1)
-                    {
-                        return -1;
-                    }
-
                     let aLength = 0;
                     let bLength = 0;
 

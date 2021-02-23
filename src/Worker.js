@@ -18,11 +18,14 @@ export default function ProductionPlannerWorker()
         maxBeltSpeed                : 780,
         maxPipeSpeed                : 600000,
 
-        minerType                   : 2,
-        minerSpeed                  : 'normal',
-
-        pumpType                    : 2,
-        pumpSpeed                   : 'normal',
+        oreType                     : 'Build_MinerMk2_C',
+        oreSpeed                    : 'normal',
+        oilType                     : 'Build_OilPump_C',
+        oilSpeed                    : 'normal',
+        waterType                   : 'Build_WaterPump_C',
+        waterSpeed                  : 'normal',
+        gasType                     : 'Build_FrackingExtractor_C',
+        gasSpeed                    : 'normal',
 
         availablePowerShards        : 0,
         allowMinerOverclocking      : true,
@@ -94,8 +97,11 @@ export default function ProductionPlannerWorker()
                 // Reset max speeds
                 delete formData.maxBeltSpeed;
                 delete formData.maxPipeSpeed;
-                delete formData.minerSpeed;
-                delete formData.pumpSpeed;
+
+                delete formData.oreExtraction;
+                delete formData.oilExtraction;
+                delete formData.waterExtraction;
+                delete formData.gasExtraction;
 
                 // Reset overclocking
                 delete formData.powerShards;
@@ -158,53 +164,73 @@ export default function ProductionPlannerWorker()
             self.options.maxPipeSpeed = parseInt(formData.maxPipeSpeed);
         }
 
-        self.postMessage({type: 'updateLoaderText', text: 'Applying nodes purity to miners...'});
-        if(formData.minerSpeed !== undefined)
+        self.postMessage({type: 'updateLoaderText', text: 'Applying extration rates...'});
+        if(formData.oreExtraction !== undefined)
         {
-            let minerOptions = formData.minerSpeed.split(';');
-                if(minerOptions.length === 2)
+            let oreOptions = formData.oreExtraction.split(';');
+                if(oreOptions.length === 2)
                 {
-                    self.options.minerType   = parseInt(minerOptions[0]);
-                    self.options.minerSpeed  = minerOptions[1];
+                    self.options.oreType    = oreOptions[0];
+                    self.options.oreSpeed   = oreOptions[1];
                 }
 
-            if(self.options.minerType === 1)
+            if(self.options.oreType === 'Build_MinerMk1_C')
             {
                 delete self.buildings.Build_MinerMk3_C;
                 delete self.buildings.Build_MinerMk2_C;
             }
 
-            if(self.options.minerType === 2)
+            if(self.options.oreType === 'Build_MinerMk2_C')
             {
                 delete self.buildings.Build_MinerMk3_C;
                 //TODO: Remove Mk1?
             }
 
-            if(self.options.minerType === 3)
+            if(self.options.oreType !== 'Build_MinerMk2_C' || self.options.oreSpeed !== 'normal')
             {
-                //TODO: Remove Mk1?
-                //TODO: Remove Mk2?
-            }
-
-            if(self.options.minerType !== 2 || self.options.minerSpeed !== 'normal')
-            {
-                self.url.push('minerSpeed/' + self.options.minerType + ';' + self.options.minerSpeed);
+                self.url.push('oreExtraction/' + self.options.oreType + ';' + self.options.oreSpeed);
             }
         }
-
-        self.postMessage({type: 'updateLoaderText', text: 'Applying nodes purity to pumps...'});
-        if(formData.pumpSpeed !== undefined)
+        if(formData.oilExtraction !== undefined)
         {
-            let pumpOptions = formData.pumpSpeed.split(';');
-                if(pumpOptions.length === 2)
+            let oilOptions = formData.oilExtraction.split(';');
+                if(oilOptions.length === 2)
                 {
-                    self.options.pumpType   = parseInt(pumpOptions[0]);
-                    self.options.pumpSpeed  = pumpOptions[1];
+                    self.options.oilType    = oilOptions[0];
+                    self.options.oilSpeed   = oilOptions[1];
                 }
 
-            if(self.options.pumpType !== 1 || self.options.pumpSpeed !== 'normal')
+            if(self.options.oilType !== 'Build_OilPump_C' || self.options.oilSpeed !== 'normal')
             {
-                self.url.push('pumpSpeed/' + self.options.pumpType + ';' + self.options.pumpSpeed);
+                self.url.push('oilExtraction/' + self.options.oilType + ';' + self.options.oilSpeed);
+            }
+        }
+        if(formData.waterExtraction !== undefined)
+        {
+            let waterOptions = formData.waterExtraction.split(';');
+                if(waterOptions.length === 2)
+                {
+                    self.options.waterType  = waterOptions[0];
+                    self.options.waterSpeed = waterOptions[1];
+                }
+
+            if(self.options.waterType !== 'Build_WaterPump_C' || self.options.waterSpeed !== 'normal')
+            {
+                self.url.push('waterExtraction/' + self.options.waterType + ';' + self.options.waterSpeed);
+            }
+        }
+        if(formData.gasExtraction !== undefined)
+        {
+            let gasOptions = formData.gasExtraction.split(';');
+                if(gasOptions.length === 2)
+                {
+                    self.options.gasType    = gasOptions[0];
+                    self.options.gasSpeed   = gasOptions[1];
+                }
+
+            if(self.options.gasType !== 'Build_FrackingExtractor_C' || self.options.gasSpeed !== 'normal')
+            {
+                self.url.push('gasExtraction/' + self.options.gasType + ';' + self.options.gasSpeed);
             }
         }
 
@@ -340,7 +366,7 @@ export default function ProductionPlannerWorker()
                                     let maxMergedQty        = mergingNodeData.qtyUsed + sourceNodeData.qtyUsed;
                                     let mergedPercentage    = 100;
                                     let maxBeltSpeed        = self.options.maxBeltSpeed;
-                                        if(mergingNodeData.buildingType === 'Build_OilPump_C' || mergingNodeData.buildingType === 'Build_WaterPump_C')
+                                        if(mergingNodeData.buildingType === 'Build_OilPump_C' || mergingNodeData.buildingType === 'Build_WaterPump_C' || mergingNodeData.buildingType === 'Build_FrackingExtractor_C')
                                         {
                                             maxBeltSpeed = self.options.maxPipeSpeed;
                                         }
@@ -1032,19 +1058,45 @@ export default function ProductionPlannerWorker()
 
                         switch(buildingId)
                         {
-                            case 'Build_OilPump_C':
-                                if(self.buildings[buildingId].extractionRate[self.options.pumpSpeed] !== undefined)
+                            case 'Build_FrackingExtractor_C':
+                                if(options.recipe === 'Recipe_CrudeOil_C')
                                 {
-                                    productionCraftingTime = 60 / (self.buildings[buildingId].extractionRate[self.options.pumpSpeed]);
+                                    if(self.buildings[buildingId].extractionRate[self.options.oilSpeed] !== undefined)
+                                    {
+                                        productionCraftingTime = 60 / (self.buildings[buildingId].extractionRate[self.options.oilSpeed]);
+                                    }
+                                }
+                                else
+                                {
+                                    if(options.recipe === 'Recipe_CrudeWater_C')
+                                    {
+                                        if(self.buildings[buildingId].extractionRate[self.options.waterSpeed] !== undefined)
+                                        {
+                                            productionCraftingTime = 60 / (self.buildings[buildingId].extractionRate[self.options.waterSpeed]);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if(self.buildings[buildingId].extractionRate[self.options.gasSpeed] !== undefined)
+                                        {
+                                            productionCraftingTime = 60 / (self.buildings[buildingId].extractionRate[self.options.gasSpeed]);
+                                        }
+                                    }
+                                }
+                                break;
+                            case 'Build_OilPump_C':
+                                if(self.buildings[buildingId].extractionRate[self.options.oilSpeed] !== undefined)
+                                {
+                                    productionCraftingTime = 60 / (self.buildings[buildingId].extractionRate[self.options.oilSpeed]);
                                 }
                                 break;
                             case 'Build_WaterPump_C':
                                 productionCraftingTime = 60 / (self.buildings[buildingId].extractionRate['normal']);
                                 break;
                             default:
-                                if(self.buildings[buildingId].extractionRate[self.options.minerSpeed] !== undefined)
+                                if(self.buildings[buildingId].extractionRate[self.options.oreSpeed] !== undefined)
                                 {
-                                    productionCraftingTime = 60 / self.buildings[buildingId].extractionRate[self.options.minerSpeed];
+                                    productionCraftingTime = 60 / self.buildings[buildingId].extractionRate[self.options.oreSpeed];
                                 }
                         }
                     }
@@ -1910,6 +1962,15 @@ export default function ProductionPlannerWorker()
                     {
                         if(self.buildings[buildingKey].className === currentBuilding)
                         {
+                            if(recipeId === 'Recipe_CrudeOil_C' && self.options.oilType === 'Build_OilPump_C' && buildingKey !== 'Build_OilPump_C')
+                            {
+                                continue;
+                            }
+                            if(recipeId === 'Recipe_CrudeWater_C' && self.options.waterType === 'Build_WaterPump_C' && buildingKey !== 'Build_WaterPump_C')
+                            {
+                                continue;
+                            }
+
                             return buildingKey;
                         }
                     }

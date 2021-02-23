@@ -183,7 +183,6 @@ export default function ProductionPlannerWorker()
             if(self.options.oreType === 'Build_MinerMk2_C')
             {
                 delete self.buildings.Build_MinerMk3_C;
-                //TODO: Remove Mk1?
             }
 
             if(self.options.oreType !== 'Build_MinerMk2_C' || self.options.oreSpeed !== 'normal')

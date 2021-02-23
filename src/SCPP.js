@@ -120,6 +120,13 @@ export default class SCPP
                     }
                 },
                 {
+                    selector                : 'node[wasClicked]',
+                    style                   : {
+                        'background-color'      : '#00FF00',
+                        'background-opacity'    : 1
+                    }
+                },
+                {
                     selector                : 'node[label]',
                     style                   : {
                         'text-margin-y'         : '20px',
@@ -393,6 +400,7 @@ export default class SCPP
     {
         // Reset Network Graph
         this.graph.elements().remove();
+        this.graph.off('tap', 'node');
 
         // Terminate worker if needed
         if(this.worker !== undefined && this.worker !== null)
@@ -539,6 +547,20 @@ export default class SCPP
         this.graphLayout.on('layoutstop', function(){ this.hideLoader(); }.bind(this));
 
         this.graphLayout.run();
+
+        this.graph.on('tap', 'node', function(evt){
+            if(this.data('nodeType') !== 'mainNode')
+            {
+                if(this.data('wasClicked') === undefined)
+                {
+                    this.data('wasClicked', true);
+                }
+                else
+                {
+                    this.removeData('wasClicked');
+                }
+            }
+        });
     }
 
     updateTreeList(html)

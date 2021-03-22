@@ -714,20 +714,29 @@ export default function ProductionPlannerWorker()
                 {
                     self.graphNodes[i].data.label   = self.buildings.Build_PipelineJunction_Cross_C.name + '\n(' + self.items[node.data.itemId].name + ')';
                     self.graphNodes[i].data.image   = self.buildings.Build_PipelineJunction_Cross_C.image;
+
+                    if(self.listBuildings.Build_PipelineJunction_Cross_C === undefined)
+                    {
+                        self.listBuildings.Build_PipelineJunction_Cross_C = 1;
+                    }
+                    else
+                    {
+                        self.listBuildings.Build_PipelineJunction_Cross_C += 1;
+                    }
                 }
                 else
                 {
                     self.graphNodes[i].data.label   = self.buildings.Build_ConveyorAttachmentMerger_C.name + '\n(' + self.items[node.data.itemId].name + ')';
                     self.graphNodes[i].data.image   = self.buildings.Build_ConveyorAttachmentMerger_C.image;
-                }
 
-                if(self.listBuildings.Build_ConveyorAttachmentMerger_C === undefined)
-                {
-                    self.listBuildings.Build_ConveyorAttachmentMerger_C = 1;
-                }
-                else
-                {
-                    self.listBuildings.Build_ConveyorAttachmentMerger_C += 1;
+                    if(self.listBuildings.Build_ConveyorAttachmentMerger_C === undefined)
+                    {
+                        self.listBuildings.Build_ConveyorAttachmentMerger_C = 1;
+                    }
+                    else
+                    {
+                        self.listBuildings.Build_ConveyorAttachmentMerger_C += 1;
+                    }
                 }
             }
 
@@ -737,20 +746,29 @@ export default function ProductionPlannerWorker()
                 {
                     self.graphNodes[i].data.label   = self.buildings.Build_PipelineJunction_Cross_C.name + '\n(' + self.items[node.data.itemId].name + ')';
                     self.graphNodes[i].data.image   = self.buildings.Build_PipelineJunction_Cross_C.image;
+
+                    if(self.listBuildings.Build_PipelineJunction_Cross_C === undefined)
+                    {
+                        self.listBuildings.Build_PipelineJunction_Cross_C = 1;
+                    }
+                    else
+                    {
+                        self.listBuildings.Build_PipelineJunction_Cross_C += 1;
+                    }
                 }
                 else
                 {
                     self.graphNodes[i].data.label   = self.buildings.Build_ConveyorAttachmentSplitter_C.name + '\n(' + self.items[node.data.itemId].name + ')';
                     self.graphNodes[i].data.image   = self.buildings.Build_ConveyorAttachmentSplitter_C.image;
-                }
 
-                if(self.listBuildings.Build_ConveyorAttachmentSplitter_C === undefined)
-                {
-                    self.listBuildings.Build_ConveyorAttachmentSplitter_C = 1;
-                }
-                else
-                {
-                    self.listBuildings.Build_ConveyorAttachmentSplitter_C += 1;
+                    if(self.listBuildings.Build_ConveyorAttachmentSplitter_C === undefined)
+                    {
+                        self.listBuildings.Build_ConveyorAttachmentSplitter_C = 1;
+                    }
+                    else
+                    {
+                        self.listBuildings.Build_ConveyorAttachmentSplitter_C += 1;
+                    }
                 }
             }
 
@@ -958,7 +976,14 @@ export default function ProductionPlannerWorker()
 
         if(currentRecipe !== null)
         {
-            self.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(self.locale).format(mainRequiredQty) + ' ' + self.items[itemKey].name + '...'});
+            if(self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas')
+            {
+                self.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(self.locale).format(mainRequiredQty / 1000) + 'm³ ' + self.items[itemKey].name + '...'});
+            }
+            else
+            {
+                self.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(self.locale).format(mainRequiredQty) + ' ' + self.items[itemKey].name + '...'});
+            }
 
             let mainNodeVisId  = itemKey + '_' + self.nodeIdKey;
                 self.nodeIdKey++;
@@ -1127,7 +1152,7 @@ export default function ProductionPlannerWorker()
                     let qtyProduced         = (60 / productionCraftingTime * productionPieces);
                     let qtyUsed             = Math.min(qtyProduced, options.qty);
 
-                        // Should we reduce builgind speed for belts?
+                        // Should we reduce building speed for belts?
                         if(productionRecipe !== false && self.options.viewMode !== 'SIMPLE')
                         {
                             let isTooFast = true;
@@ -1511,11 +1536,25 @@ export default function ProductionPlannerWorker()
                             {
                                 if(self.graphNodes[k].data.nodeType === 'merger')
                                 {
-                                    self.graphNodes[k].data.buildingType = 'Build_ConveyorAttachmentMerger_C';
+                                    if(self.items[self.graphNodes[k].data.itemId].category === 'liquid' || self.items[self.graphNodes[k].data.itemId].category === 'gas')
+                                    {
+                                        self.graphNodes[k].data.buildingType = 'Build_PipelineJunction_Cross_C';
+                                    }
+                                    else
+                                    {
+                                        self.graphNodes[k].data.buildingType = 'Build_ConveyorAttachmentMerger_C';
+                                    }
                                 }
                                 if(self.graphNodes[k].data.nodeType === 'splitter')
                                 {
-                                    self.graphNodes[k].data.buildingType = 'Build_ConveyorAttachmentSplitter_C';
+                                    if(self.items[self.graphNodes[k].data.itemId].category === 'liquid' || self.items[self.graphNodes[k].data.itemId].category === 'gas')
+                                    {
+                                        self.graphNodes[k].data.buildingType = 'Build_PipelineJunction_Cross_C';
+                                    }
+                                    else
+                                    {
+                                        self.graphNodes[k].data.buildingType = 'Build_ConveyorAttachmentSplitter_C';
+                                    }
                                 }
 
                                 html.push('<img src="' + self.buildings[self.graphNodes[k].data.buildingType].image + '" alt="' + self.buildings[self.graphNodes[k].data.buildingType].name + '" style="width: 40px;" class="mr-3 collapseChildren" />');
@@ -1848,6 +1887,14 @@ export default function ProductionPlannerWorker()
                     {
                         if(self.recipes[recipeKey].produce[currentItemClassName] !== undefined)
                         {
+                            if(recipeKey === 'Recipe_Alternate_FertileUranium_C') //TODO: Find solution...
+                            {
+                                continue;
+                            }
+                            if(recipeKey === 'Recipe_Alternate_InstantScrap_C') //TODO: Find solution...
+                            {
+                                continue;
+                            }
                             if(recipeKey === 'Recipe_Alternate_ElectroAluminumScrap_C' && itemId === 'Desc_Water_C')
                             {
                                 continue;
@@ -1925,13 +1972,13 @@ export default function ProductionPlannerWorker()
 
                             if(produceA !== null && produceB !== null)
                             {
-                                if(produceA === produceB)
+                                if(produceA !== produceB)
                                 {
-                                    return self.recipes[a].name.localeCompare(self.recipes[b].name);
+                                    return produceB - produceA;
                                 }
-
-                                return produceB - produceA;
                             }
+
+                            return self.recipes[a].name.localeCompare(self.recipes[b].name);
                         }
 
                     return aLength - bLength;

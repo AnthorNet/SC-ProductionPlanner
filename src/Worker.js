@@ -1883,22 +1883,15 @@ export default function ProductionPlannerWorker()
             {
                 let recipeKey = self.options.altRecipes[i];
 
+                    if(itemId === 'Desc_Water_C') // Force water to be extracted...
+                    {
+                        continue;
+                    }
+
                     if(self.recipes[recipeKey] !== undefined)
                     {
                         if(self.recipes[recipeKey].produce[currentItemClassName] !== undefined)
                         {
-                            if(recipeKey === 'Recipe_Alternate_FertileUranium_C') //TODO: Find solution...
-                            {
-                                continue;
-                            }
-                            if(recipeKey === 'Recipe_Alternate_InstantScrap_C') //TODO: Find solution...
-                            {
-                                continue;
-                            }
-                            if(recipeKey === 'Recipe_Alternate_ElectroAluminumScrap_C' && itemId === 'Desc_Water_C')
-                            {
-                                continue;
-                            }
                             if(recipeKey === 'Recipe_Alternate_RecycledRubber_C' && self.options.altRecipes.includes('Recipe_Alternate_Plastic_1_C'))
                             {
                                 continue;

@@ -3,7 +3,7 @@
 export default function ProductionPlannerWorker()
 {
     self.baseUrls       = {};
-    self.url            = [];
+    self.url            = {};
 
     self.debug          = false;
     self.locale         = 'en';
@@ -38,6 +38,7 @@ export default function ProductionPlannerWorker()
     self.tools          = {};
     self.recipes        = {};
 
+    self.inputItems     = {};
     self.requestedItems = {};
     self.requiredPower  = 0;
     self.listItems      = {};
@@ -71,21 +72,28 @@ export default function ProductionPlannerWorker()
         {
             if(formData[itemKey] !== undefined && self.items[itemKey] !== undefined)
             {
-                self.url.push(itemKey + '/' + formData[itemKey]);
+                self.url[itemKey] = formData[itemKey];
                 self.requestedItems[itemKey] = formData[itemKey];
             }
         }
 
+        if(formData.input !== undefined)
+        {
+            console.log(formData.input);
+            self.url.input  = formData.input
+            self.inputItems = formData.input;
+        }
+
         if(formData.direction !== undefined)
         {
-            self.url.push('direction/' + formData.direction);
+            self.url.direction  = formData.direction;
             self.graphDirection = formData.direction;
         }
 
         if(formData.view !== undefined && formData.view !== 'REALISTIC')
         {
-            self.url.push('view/' + formData.view);
-            self.options.viewMode = formData.view;
+            self.url.view           = formData.view;
+            self.options.viewMode   = formData.view;
 
             // If using SIMPLE view, reset some other options
             if(formData.view === 'SIMPLE')
@@ -115,15 +123,16 @@ export default function ProductionPlannerWorker()
 
         if(formData.activatedMods !== undefined && formData.activatedMods.length > 0)
         {
+            self.url.mods = [];
             for(let i = 0; i < formData.activatedMods.length; i++)
             {
-                self.url.push('mods/' + formData.activatedMods[i].data.id);
+                self.url.mods.push(formData.activatedMods[i].data.id);
             }
         }
 
         if(formData.mergeBuildings !== undefined)
         {
-            self.url.push('mergeBuildings/' + formData.mergeBuildings);
+            self.url.mergeBuildings     = formData.mergeBuildings;
             self.options.mergeBuildings = parseInt(formData.mergeBuildings);
 
             if(self.options.mergeBuildings !== 1)
@@ -134,21 +143,21 @@ export default function ProductionPlannerWorker()
 
         if(formData.useManifolds !== undefined)
         {
-            self.url.push('useManifolds/' + formData.useManifolds);
-            self.options.useManifolds = parseInt(formData.useManifolds);
+            self.url.useManifolds       = formData.useManifolds;
+            self.options.useManifolds   = parseInt(formData.useManifolds);
         }
 
         if(formData.maxLevel !== undefined)
         {
-            self.url.push('maxLevel/' + formData.maxLevel);
-            self.options.maxLevel = parseInt(formData.maxLevel);
+            self.url.maxLevel       = formData.maxLevel;
+            self.options.maxLevel   = parseInt(formData.maxLevel);
         }
 
         if(formData.maxBeltSpeed !== undefined)
         {
             if(self.options.maxBeltSpeed !== parseInt(formData.maxBeltSpeed))
             {
-                self.url.push('maxBeltSpeed/' + formData.maxBeltSpeed);
+                self.url.maxBeltSpeed = formData.maxBeltSpeed;
             }
 
             self.options.maxBeltSpeed = parseInt(formData.maxBeltSpeed);
@@ -158,7 +167,7 @@ export default function ProductionPlannerWorker()
         {
             if(self.options.maxPipeSpeed !== parseInt(formData.maxPipeSpeed))
             {
-                self.url.push('maxPipeSpeed/' + formData.maxPipeSpeed);
+                self.url.maxPipeSpeed = formData.maxPipeSpeed;
             }
 
             self.options.maxPipeSpeed = parseInt(formData.maxPipeSpeed);
@@ -187,7 +196,7 @@ export default function ProductionPlannerWorker()
 
             if(self.options.oreType !== 'Build_MinerMk2_C' || self.options.oreSpeed !== 'normal')
             {
-                self.url.push('oreExtraction/' + self.options.oreType + ';' + self.options.oreSpeed);
+                self.url.oreExtraction = self.options.oreType + ';' + self.options.oreSpeed;
             }
         }
         if(formData.oilExtraction !== undefined)
@@ -201,7 +210,7 @@ export default function ProductionPlannerWorker()
 
             if(self.options.oilType !== 'Build_OilPump_C' || self.options.oilSpeed !== 'normal')
             {
-                self.url.push('oilExtraction/' + self.options.oilType + ';' + self.options.oilSpeed);
+                self.url.oilExtraction = self.options.oilType + ';' + self.options.oilSpeed;
             }
         }
         if(formData.waterExtraction !== undefined)
@@ -215,7 +224,7 @@ export default function ProductionPlannerWorker()
 
             if(self.options.waterType !== 'Build_WaterPump_C' || self.options.waterSpeed !== 'normal')
             {
-                self.url.push('waterExtraction/' + self.options.waterType + ';' + self.options.waterSpeed);
+                self.url.waterExtraction = self.options.waterType + ';' + self.options.waterSpeed;
             }
         }
         if(formData.gasExtraction !== undefined)
@@ -229,7 +238,7 @@ export default function ProductionPlannerWorker()
 
             if(self.options.gasType !== 'Build_FrackingExtractor_C' || self.options.gasSpeed !== 'normal')
             {
-                self.url.push('gasExtraction/' + self.options.gasType + ';' + self.options.gasSpeed);
+                self.url.gasExtraction = self.options.gasType + ';' + self.options.gasSpeed;
             }
         }
 
@@ -241,34 +250,37 @@ export default function ProductionPlannerWorker()
             for(let i = 0; i < formData.altRecipes.length; i++)
             {
                 let recipeKey = formData.altRecipes[i];
+                    if(self.recipes[recipeKey] !== undefined)
+                    {
+                        self.options.altRecipes.push(recipeKey);
+                    }
+            }
 
-                if(self.recipes[recipeKey] !== undefined)
-                {
-                    self.options.altRecipes.push(recipeKey);
-                    self.url.push('altRecipes/' + recipeKey);
-                }
+            if(self.options.altRecipes.length > 0)
+            {
+                self.url.altRecipes = self.options.altRecipes;
             }
         }
 
         if(self.options.mergeBuildings === 1 && formData.powerShards !== undefined && formData.powerShards > 0)
         {
-            self.options.availablePowerShards = parseInt(formData.powerShards);
-            self.url.push('powerShards/' + formData.powerShards);
+            self.options.availablePowerShards           = parseInt(formData.powerShards);
+            self.url.powerShards                        = formData.powerShards;
 
             if(formData.minerOverclocking !== undefined && formData.minerOverclocking !== 1)
             {
-                self.options.allowMinerOverclocking = false;
-                self.url.push('minerOverclocking/' + formData.minerOverclocking);
+                self.options.allowMinerOverclocking     = false;
+                self.url.minerOverclocking              = formData.minerOverclocking;
             }
             if(formData.pumpOverclocking !== undefined && formData.pumpOverclocking !== 1)
             {
-                self.options.allowPumpOverclocking = false;
-                self.url.push('pumpOverclocking/' + formData.pumpOverclocking);
+                self.options.allowPumpOverclocking      = false;
+                self.url.pumpOverclocking               = formData.pumpOverclocking;
             }
             if(formData.buildingOverclocking !== undefined && formData.buildingOverclocking !== 1)
             {
-                self.options.allowBuildingOverclocking = false;
-                self.url.push('buildingOverclocking/' + formData.buildingOverclocking);
+                self.options.allowBuildingOverclocking  = false;
+                self.url.buildingOverclocking           = formData.buildingOverclocking;
             }
         }
 
@@ -277,6 +289,24 @@ export default function ProductionPlannerWorker()
     };
 
     self.startCalculation = function() {
+        // Add pseudo-by products for inputs...
+        for(let itemKey in self.inputItems)
+        {
+            let mainNodeVisId  = itemKey + '_' + self.nodeIdKey;
+                self.nodeIdKey++;
+
+            self.graphNodes.push({data: {
+                id                  : mainNodeVisId + '_byProduct',
+                nodeType            : 'byProductItem',
+                itemId              : itemKey,
+                qtyUsed             : 0,
+                qtyProduced         : self.inputItems[itemKey],
+                neededQty           : self.inputItems[itemKey],
+                image               : self.items[itemKey].image
+            }});
+        }
+
+        // Parse required items!
         for(let itemKey in self.requestedItems)
         {
             let requestedQty = self.requestedItems[itemKey];

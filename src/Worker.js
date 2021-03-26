@@ -300,8 +300,8 @@ export default function ProductionPlannerWorker()
                 nodeType            : 'byProductItem',
                 itemId              : itemKey,
                 qtyUsed             : 0,
-                qtyProduced         : self.inputItems[itemKey],
-                neededQty           : self.inputItems[itemKey],
+                qtyProduced         : parseInt(self.inputItems[itemKey]),
+                neededQty           : parseInt(self.inputItems[itemKey]),
                 image               : self.items[itemKey].image
             }});
         }
@@ -864,10 +864,28 @@ export default function ProductionPlannerWorker()
                     }
 
                 // Calculate required power!
-                let powerUsage              = self.buildings[node.data.buildingType].powerUsed * Math.pow(performance / 100, 1.6);
+                let powerUsage = 0
+                    if(self.buildings[node.data.buildingType].powerUsed !== undefined)
+                    {
+                        powerUsage = self.buildings[node.data.buildingType].powerUsed;
+                    }
+                    if(node.data.buildingType === 'Build_FrackingExtractor_C')
+                    {
+                        //TODO: Average power based on max Extractor?
+                        powerUsage = self.buildings.Build_FrackingSmasher_C.powerUsed;
+                    }
+                    if(self.buildings[node.data.buildingType].powerUsedRecipes !== undefined && self.buildings[node.data.buildingType].powerUsedRecipes[node.data.recipe] !== undefined)
+                    {
+                        powerUsage = (self.buildings[node.data.buildingType].powerUsedRecipes[node.data.recipe][0] + self.buildings[node.data.buildingType].powerUsedRecipes[node.data.recipe][1]) / 2;
+                    }
+
                     if(self.options.viewMode === 'SIMPLE')
                     {
-                        powerUsage              = self.buildings[node.data.buildingType].powerUsed * performance / 100;
+                        powerUsage  *= performance / 100;
+                    }
+                    else
+                    {
+                        powerUsage  *= Math.pow(performance / 100, 1.6);
                     }
                     self.requiredPower     += powerUsage;
 

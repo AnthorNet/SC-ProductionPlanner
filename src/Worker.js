@@ -79,7 +79,6 @@ export default function ProductionPlannerWorker()
 
         if(formData.input !== undefined)
         {
-            console.log(formData.input);
             self.url.input  = formData.input
             self.inputItems = formData.input;
         }
@@ -292,18 +291,48 @@ export default function ProductionPlannerWorker()
         // Add pseudo-by products for inputs...
         for(let itemKey in self.inputItems)
         {
-            let mainNodeVisId  = itemKey + '_' + self.nodeIdKey;
-                self.nodeIdKey++;
+            let requestedQty = parseFloat(self.inputItems[itemKey]);
+            let maxMergedQty = self.options.maxBeltSpeed;
 
-            self.graphNodes.push({data: {
-                id                  : mainNodeVisId + '_byProduct',
-                nodeType            : 'byProductItem',
-                itemId              : itemKey,
-                qtyUsed             : 0,
-                qtyProduced         : parseInt(self.inputItems[itemKey]),
-                neededQty           : parseInt(self.inputItems[itemKey]),
-                image               : self.items[itemKey].image
-            }});
+                if(self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas')
+                {
+                    requestedQty *= 1000;
+                    maxMergedQty = self.options.maxPipeSpeed;
+                }
+
+                while(requestedQty >= maxMergedQty)
+                {
+                    let mainNodeVisId  = itemKey + '_' + self.nodeIdKey;
+                        self.nodeIdKey++;
+
+                        self.graphNodes.push({data: {
+                            id                  : mainNodeVisId + '_byProduct',
+                            nodeType            : 'byProductItem',
+                            itemId              : itemKey,
+                            qtyUsed             : 0,
+                            qtyProduced         : ((self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas') ? (maxMergedQty / 1000) : maxMergedQty),
+                            neededQty           : ((self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas') ? (maxMergedQty / 1000) : maxMergedQty),
+                            image               : self.items[itemKey].image
+                        }});
+
+                        requestedQty -= maxMergedQty;
+                }
+
+                if(requestedQty > 0)
+                {
+                    let mainNodeVisId  = itemKey + '_' + self.nodeIdKey;
+                        self.nodeIdKey++;
+
+                        self.graphNodes.push({data: {
+                            id                  : mainNodeVisId + '_byProduct',
+                            nodeType            : 'byProductItem',
+                            itemId              : itemKey,
+                            qtyUsed             : 0,
+                            qtyProduced         : ((self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas') ? (requestedQty / 1000) : requestedQty),
+                            neededQty           : ((self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas') ? (requestedQty / 1000) : requestedQty),
+                            image               : self.items[itemKey].image
+                        }});
+                }
         }
 
         // Parse required items!

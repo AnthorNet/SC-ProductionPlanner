@@ -3,7 +3,7 @@
 export default function ProductionPlannerWorker()
 {
     self.baseUrls       = {};
-    self.url            = {};
+    self.url            = [];
 
     self.debug          = false;
     self.locale         = 'en';
@@ -38,7 +38,6 @@ export default function ProductionPlannerWorker()
     self.tools          = {};
     self.recipes        = {};
 
-    self.inputItems     = {};
     self.requestedItems = {};
     self.requiredPower  = 0;
     self.listItems      = {};
@@ -72,27 +71,21 @@ export default function ProductionPlannerWorker()
         {
             if(formData[itemKey] !== undefined && self.items[itemKey] !== undefined)
             {
-                self.url[itemKey] = formData[itemKey];
+                self.url.push(itemKey + '/' + formData[itemKey]);
                 self.requestedItems[itemKey] = formData[itemKey];
             }
         }
 
-        if(formData.input !== undefined)
+        if(formData.direction !== undefined)
         {
-            self.url.input  = formData.input
-            self.inputItems = formData.input;
-        }
-
-        if(formData.direction !== undefined && self.graphDirection !== formData.direction)
-        {
-            self.url.direction  = formData.direction;
+            self.url.push('direction/' + formData.direction);
             self.graphDirection = formData.direction;
         }
 
         if(formData.view !== undefined && formData.view !== 'REALISTIC')
         {
-            self.url.view           = formData.view;
-            self.options.viewMode   = formData.view;
+            self.url.push('view/' + formData.view);
+            self.options.viewMode = formData.view;
 
             // If using SIMPLE view, reset some other options
             if(formData.view === 'SIMPLE')
@@ -122,16 +115,15 @@ export default function ProductionPlannerWorker()
 
         if(formData.activatedMods !== undefined && formData.activatedMods.length > 0)
         {
-            self.url.mods = [];
             for(let i = 0; i < formData.activatedMods.length; i++)
             {
-                self.url.mods.push(formData.activatedMods[i].data.id);
+                self.url.push('mods/' + formData.activatedMods[i].data.id);
             }
         }
 
         if(formData.mergeBuildings !== undefined)
         {
-            self.url.mergeBuildings     = formData.mergeBuildings;
+            self.url.push('mergeBuildings/' + formData.mergeBuildings);
             self.options.mergeBuildings = parseInt(formData.mergeBuildings);
 
             if(self.options.mergeBuildings !== 1)
@@ -142,21 +134,21 @@ export default function ProductionPlannerWorker()
 
         if(formData.useManifolds !== undefined)
         {
-            self.url.useManifolds       = formData.useManifolds;
-            self.options.useManifolds   = parseInt(formData.useManifolds);
+            self.url.push('useManifolds/' + formData.useManifolds);
+            self.options.useManifolds = parseInt(formData.useManifolds);
         }
 
         if(formData.maxLevel !== undefined)
         {
-            self.url.maxLevel       = formData.maxLevel;
-            self.options.maxLevel   = parseInt(formData.maxLevel);
+            self.url.push('maxLevel/' + formData.maxLevel);
+            self.options.maxLevel = parseInt(formData.maxLevel);
         }
 
         if(formData.maxBeltSpeed !== undefined)
         {
             if(self.options.maxBeltSpeed !== parseInt(formData.maxBeltSpeed))
             {
-                self.url.maxBeltSpeed = formData.maxBeltSpeed;
+                self.url.push('maxBeltSpeed/' + formData.maxBeltSpeed);
             }
 
             self.options.maxBeltSpeed = parseInt(formData.maxBeltSpeed);
@@ -166,7 +158,7 @@ export default function ProductionPlannerWorker()
         {
             if(self.options.maxPipeSpeed !== parseInt(formData.maxPipeSpeed))
             {
-                self.url.maxPipeSpeed = formData.maxPipeSpeed;
+                self.url.push('maxPipeSpeed/' + formData.maxPipeSpeed);
             }
 
             self.options.maxPipeSpeed = parseInt(formData.maxPipeSpeed);
@@ -195,7 +187,7 @@ export default function ProductionPlannerWorker()
 
             if(self.options.oreType !== 'Build_MinerMk2_C' || self.options.oreSpeed !== 'normal')
             {
-                self.url.oreExtraction = self.options.oreType + ';' + self.options.oreSpeed;
+                self.url.push('oreExtraction/' + self.options.oreType + ';' + self.options.oreSpeed);
             }
         }
         if(formData.oilExtraction !== undefined)
@@ -209,7 +201,7 @@ export default function ProductionPlannerWorker()
 
             if(self.options.oilType !== 'Build_OilPump_C' || self.options.oilSpeed !== 'normal')
             {
-                self.url.oilExtraction = self.options.oilType + ';' + self.options.oilSpeed;
+                self.url.push('oilExtraction/' + self.options.oilType + ';' + self.options.oilSpeed);
             }
         }
         if(formData.waterExtraction !== undefined)
@@ -223,7 +215,7 @@ export default function ProductionPlannerWorker()
 
             if(self.options.waterType !== 'Build_WaterPump_C' || self.options.waterSpeed !== 'normal')
             {
-                self.url.waterExtraction = self.options.waterType + ';' + self.options.waterSpeed;
+                self.url.push('waterExtraction/' + self.options.waterType + ';' + self.options.waterSpeed);
             }
         }
         if(formData.gasExtraction !== undefined)
@@ -237,7 +229,7 @@ export default function ProductionPlannerWorker()
 
             if(self.options.gasType !== 'Build_FrackingExtractor_C' || self.options.gasSpeed !== 'normal')
             {
-                self.url.gasExtraction = self.options.gasType + ';' + self.options.gasSpeed;
+                self.url.push('gasExtraction/' + self.options.gasType + ';' + self.options.gasSpeed);
             }
         }
 
@@ -249,37 +241,34 @@ export default function ProductionPlannerWorker()
             for(let i = 0; i < formData.altRecipes.length; i++)
             {
                 let recipeKey = formData.altRecipes[i];
-                    if(self.recipes[recipeKey] !== undefined)
-                    {
-                        self.options.altRecipes.push(recipeKey);
-                    }
-            }
 
-            if(self.options.altRecipes.length > 0)
-            {
-                self.url.altRecipes = self.options.altRecipes;
+                if(self.recipes[recipeKey] !== undefined)
+                {
+                    self.options.altRecipes.push(recipeKey);
+                    self.url.push('altRecipes/' + recipeKey);
+                }
             }
         }
 
         if(self.options.mergeBuildings === 1 && formData.powerShards !== undefined && formData.powerShards > 0)
         {
-            self.options.availablePowerShards           = parseInt(formData.powerShards);
-            self.url.powerShards                        = formData.powerShards;
+            self.options.availablePowerShards = parseInt(formData.powerShards);
+            self.url.push('powerShards/' + formData.powerShards);
 
             if(formData.minerOverclocking !== undefined && formData.minerOverclocking !== 1)
             {
-                self.options.allowMinerOverclocking     = false;
-                self.url.minerOverclocking              = formData.minerOverclocking;
+                self.options.allowMinerOverclocking = false;
+                self.url.push('minerOverclocking/' + formData.minerOverclocking);
             }
             if(formData.pumpOverclocking !== undefined && formData.pumpOverclocking !== 1)
             {
-                self.options.allowPumpOverclocking      = false;
-                self.url.pumpOverclocking               = formData.pumpOverclocking;
+                self.options.allowPumpOverclocking = false;
+                self.url.push('pumpOverclocking/' + formData.pumpOverclocking);
             }
             if(formData.buildingOverclocking !== undefined && formData.buildingOverclocking !== 1)
             {
-                self.options.allowBuildingOverclocking  = false;
-                self.url.buildingOverclocking           = formData.buildingOverclocking;
+                self.options.allowBuildingOverclocking = false;
+                self.url.push('buildingOverclocking/' + formData.buildingOverclocking);
             }
         }
 
@@ -288,54 +277,6 @@ export default function ProductionPlannerWorker()
     };
 
     self.startCalculation = function() {
-        // Add pseudo-by products for inputs...
-        for(let itemKey in self.inputItems)
-        {
-            let requestedQty = parseFloat(self.inputItems[itemKey]);
-            let maxMergedQty = self.options.maxBeltSpeed;
-
-                if(self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas')
-                {
-                    requestedQty *= 1000;
-                    maxMergedQty = self.options.maxPipeSpeed;
-                }
-
-                while(requestedQty >= maxMergedQty)
-                {
-                    let mainNodeVisId  = itemKey + '_' + self.nodeIdKey;
-                        self.nodeIdKey++;
-
-                        self.graphNodes.push({data: {
-                            id                  : mainNodeVisId + '_byProduct',
-                            nodeType            : 'byProductItem',
-                            itemId              : itemKey,
-                            qtyUsed             : 0,
-                            qtyProduced         : maxMergedQty,
-                            neededQty           : maxMergedQty,
-                            image               : self.items[itemKey].image
-                        }});
-
-                        requestedQty -= maxMergedQty;
-                }
-
-                if(requestedQty > 0)
-                {
-                    let mainNodeVisId  = itemKey + '_' + self.nodeIdKey;
-                        self.nodeIdKey++;
-
-                        self.graphNodes.push({data: {
-                            id                  : mainNodeVisId + '_byProduct',
-                            nodeType            : 'byProductItem',
-                            itemId              : itemKey,
-                            qtyUsed             : 0,
-                            qtyProduced         : requestedQty,
-                            neededQty           : requestedQty,
-                            image               : self.items[itemKey].image
-                        }});
-                }
-        }
-
-        // Parse required items!
         for(let itemKey in self.requestedItems)
         {
             let requestedQty = self.requestedItems[itemKey];
@@ -893,28 +834,10 @@ export default function ProductionPlannerWorker()
                     }
 
                 // Calculate required power!
-                let powerUsage = 0
-                    if(self.buildings[node.data.buildingType].powerUsed !== undefined)
-                    {
-                        powerUsage = self.buildings[node.data.buildingType].powerUsed;
-                    }
-                    if(node.data.buildingType === 'Build_FrackingExtractor_C')
-                    {
-                        //TODO: Average power based on max Extractor?
-                        powerUsage = self.buildings.Build_FrackingSmasher_C.powerUsed;
-                    }
-                    if(self.buildings[node.data.buildingType].powerUsedRecipes !== undefined && self.buildings[node.data.buildingType].powerUsedRecipes[node.data.recipe] !== undefined)
-                    {
-                        powerUsage = (self.buildings[node.data.buildingType].powerUsedRecipes[node.data.recipe][0] + self.buildings[node.data.buildingType].powerUsedRecipes[node.data.recipe][1]) / 2;
-                    }
-
+                let powerUsage              = self.buildings[node.data.buildingType].powerUsed * Math.pow(performance / 100, 1.6);
                     if(self.options.viewMode === 'SIMPLE')
                     {
-                        powerUsage  *= performance / 100;
-                    }
-                    else
-                    {
-                        powerUsage  *= Math.pow(performance / 100, 1.6);
+                        powerUsage              = self.buildings[node.data.buildingType].powerUsed * performance / 100;
                     }
                     self.requiredPower     += powerUsage;
 
@@ -1245,7 +1168,7 @@ export default function ProductionPlannerWorker()
                                             let recipeItemId            = self.getItemIdFromClassName(recipeItemClassName);
                                             let maxProductionSpeed      = self.options.maxBeltSpeed;
 
-                                                if(self.items[recipeItemId] !== undefined && (self.items[recipeItemId].category === 'liquid' || self.items[recipeItemId].category === 'gas'))
+                                                if(self.items[recipeItemId].category === 'liquid' || self.items[recipeItemId].category === 'gas')
                                                 {
                                                     maxProductionSpeed = self.options.maxPipeSpeed;
                                                 }
@@ -1960,16 +1883,22 @@ export default function ProductionPlannerWorker()
             {
                 let recipeKey = self.options.altRecipes[i];
 
-                    if(['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C'].includes(recipeKey)){ continue; }
-                    if(itemId === 'Desc_Water_C') // Force water to be extracted...
-                    {
-                        continue;
-                    }
-
                     if(self.recipes[recipeKey] !== undefined)
                     {
                         if(self.recipes[recipeKey].produce[currentItemClassName] !== undefined)
                         {
+                            if(recipeKey === 'Recipe_Alternate_FertileUranium_C') //TODO: Find solution...
+                            {
+                                continue;
+                            }
+                            if(recipeKey === 'Recipe_Alternate_InstantScrap_C') //TODO: Find solution...
+                            {
+                                continue;
+                            }
+                            if(recipeKey === 'Recipe_Alternate_ElectroAluminumScrap_C' && itemId === 'Desc_Water_C')
+                            {
+                                continue;
+                            }
                             if(recipeKey === 'Recipe_Alternate_RecycledRubber_C' && self.options.altRecipes.includes('Recipe_Alternate_Plastic_1_C'))
                             {
                                 continue;
@@ -1982,8 +1911,6 @@ export default function ProductionPlannerWorker()
 
             for(let recipeKey in self.recipes)
             {
-                if(['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C'].includes(recipeKey)){ continue; }
-
                 if(self.isAlternateRecipe(self.recipes[recipeKey]) === false)
                 {
                     if(self.recipes[recipeKey].produce !== undefined)

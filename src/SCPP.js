@@ -623,23 +623,6 @@ export default class SCPP
     {
         let urlJoined   = this.baseUrls.planner;
             urlJoined  += '/json/' + encodeURIComponent(JSON.stringify(url));
-            /*
-            for(let key in url)
-            {
-                switch(key)
-                {
-                    case 'altRecipes':
-                    case 'mods':
-                    case 'input':
-                        urlJoined += '/' + key + '/' + btoa(pako.deflate(JSON.stringify(url[key])));
-                        break;
-
-                        break;
-                    default:
-                        urlJoined += '/' + key + '/' + url[key];
-                }
-            }
-            */
             window.history.pushState({href: urlJoined}, '', urlJoined);
 
             if(typeof gtag === 'function')

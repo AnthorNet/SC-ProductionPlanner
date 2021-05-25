@@ -1407,42 +1407,43 @@ export default function ProductionPlannerWorker()
                                 {
                                     while(requiredQty > 0)
                                     {
-                                        let usesByProduct = false;
-
                                         // Can we use by product?
-                                        for(let i = 0; i < self.graphNodes.length; i ++)
-                                        {
-                                            if(self.graphNodes[i].data.nodeType === 'byProductItem')
+                                        let usesByProduct = false;
+                                            for(let i = 0; i < self.graphNodes.length; i ++)
                                             {
-                                                if(self.graphNodes[i].data.itemId === recipeItemId)
+                                                if(self.graphNodes[i].data.nodeType === 'byProductItem')
                                                 {
-                                                    let remainingQty    = self.graphNodes[i].data.qtyProduced - self.graphNodes[i].data.qtyUsed;
-                                                    let useQty          = Math.min(remainingQty, requiredQty);
-
-                                                        if(useQty < 0)
-                                                        {
-                                                            useQty = remainingQty;
-                                                        }
-
-                                                    if(remainingQty > 0 && useQty > 0)
+                                                    if(self.graphNodes[i].data.itemId === recipeItemId)
                                                     {
+                                                        let remainingQty    = self.graphNodes[i].data.qtyProduced - self.graphNodes[i].data.qtyUsed;
+                                                        let useQty          = Math.min(remainingQty, requiredQty);
 
-                                                            // Add edge between byProduct and item..
-                                                            self.graphEdges.push({data: {
-                                                                id                  : self.graphNodes[i].data.id + '_' + currentParentVisId,
-                                                                source              : self.graphNodes[i].data.id,
-                                                                target              : currentParentVisId,
-                                                                itemId              : recipeItemId,
-                                                                qty                 : useQty
-                                                            }});
+                                                            if(useQty < 0)
+                                                            {
+                                                                useQty = remainingQty;
+                                                            }
 
-                                                            self.graphNodes[i].data.qtyUsed    += useQty;
-                                                            requiredQty                        -= useQty;
-                                                            usesByProduct                       = true;
+                                                        if(remainingQty > 0 && useQty > 0)
+                                                        {
+
+                                                                // Add edge between byProduct and item..
+                                                                self.graphEdges.push({data: {
+                                                                    id                  : self.graphNodes[i].data.id + '_' + currentParentVisId,
+                                                                    source              : self.graphNodes[i].data.id,
+                                                                    target              : currentParentVisId,
+                                                                    itemId              : recipeItemId,
+                                                                    qty                 : useQty
+                                                                }});
+
+                                                                self.graphNodes[i].data.qtyUsed    += useQty;
+                                                                requiredQty                        -= useQty;
+                                                                usesByProduct                       = true;
+
+                                                                break;
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
 
                                         if(usesByProduct === false)
                                         {
@@ -1469,26 +1470,54 @@ export default function ProductionPlannerWorker()
                                 }
                                 else
                                 {
-                                    let lastNodeVisId = currentParentVisId + '_' + recipeItemId;
+                                    // Can we use by last node yet?
+                                    let usesLastNode = false;
+                                        for(let i = 0; i < self.graphNodes.length; i ++)
+                                        {
+                                            if(self.graphNodes[i].data.nodeType === 'lastNodeItem')
+                                            {
+                                                if(self.graphNodes[i].data.itemId === recipeItemId)
+                                                {
+                                                    // Add edge between byProduct and item..
+                                                    self.graphEdges.push({data: {
+                                                        id                  : self.graphNodes[i].data.id + '_' + currentParentVisId,
+                                                        source              : self.graphNodes[i].data.id,
+                                                        target              : currentParentVisId,
+                                                        itemId              : recipeItemId,
+                                                        qty                 : requiredQty
+                                                    }});
 
-                                        // Push last node!
-                                        self.graphNodes.push({data: {
-                                            id                  : lastNodeVisId,
-                                            nodeType            : 'lastNodeItem',
-                                            itemId              : recipeItemId,
-                                            neededQty           : requiredQty,
-                                            image               : self.items[recipeItemId].image
-                                        }});
+                                                    self.graphNodes[i].data.neededQty += requiredQty;
+                                                    usesLastNode                       = true;
 
-                                        // Push new edges between node and parent
-                                        self.graphEdges.push({data: {
-                                            id                  : lastNodeVisId + '_' + currentParentVisId,
-                                            source              : lastNodeVisId,
-                                            target              : currentParentVisId,
-                                            itemId              : recipeItemId,
-                                            useAlternateRecipe  : null,
-                                            qty                 : requiredQty
-                                        }});
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        if(usesLastNode === false)
+                                        {
+                                            let lastNodeVisId = currentParentVisId + '_' + recipeItemId;
+
+                                                // Push last node!
+                                                self.graphNodes.push({data: {
+                                                    id                  : lastNodeVisId,
+                                                    nodeType            : 'lastNodeItem',
+                                                    itemId              : recipeItemId,
+                                                    neededQty           : requiredQty,
+                                                    image               : self.items[recipeItemId].image
+                                                }});
+
+                                                // Push new edges between node and parent
+                                                self.graphEdges.push({data: {
+                                                    id                  : lastNodeVisId + '_' + currentParentVisId,
+                                                    source              : lastNodeVisId,
+                                                    target              : currentParentVisId,
+                                                    itemId              : recipeItemId,
+                                                    useAlternateRecipe  : null,
+                                                    qty                 : requiredQty
+                                                }});
+                                        }
                                 }
                             }
                         }

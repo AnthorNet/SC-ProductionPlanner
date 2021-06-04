@@ -948,13 +948,27 @@ export default function ProductionPlannerWorker()
                 }
 
                 // Add to buildgins list
-                if(self.listBuildings[node.data.buildingType] === undefined)
+                if(self.options.viewMode === 'SIMPLE')
                 {
-                    self.listBuildings[node.data.buildingType] = 1;
+                    if(self.listBuildings[node.data.buildingType] === undefined)
+                    {
+                        self.listBuildings[node.data.buildingType] = Math.ceil(performance / 100);
+                    }
+                    else
+                    {
+                        self.listBuildings[node.data.buildingType] += Math.ceil(performance / 100);
+                    }
                 }
                 else
                 {
-                    self.listBuildings[node.data.buildingType] += 1;
+                    if(self.listBuildings[node.data.buildingType] === undefined)
+                    {
+                        self.listBuildings[node.data.buildingType] = 1;
+                    }
+                    else
+                    {
+                        self.listBuildings[node.data.buildingType] += 1;
+                    }
                 }
             }
 

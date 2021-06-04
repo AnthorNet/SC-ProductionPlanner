@@ -101,6 +101,10 @@ export default function ProductionPlannerWorker()
                 delete formData.useManifolds;
                 self.options.useManifolds = 0;  // Don't use manifolds
 
+                // No speed limit on SIMPLE (Mostly ^^)
+                self.options.maxBeltSpeed = Number.MAX_SAFE_INTEGER;
+                self.options.maxPipeSpeed = Number.MAX_SAFE_INTEGER;
+
                 // Reset max speeds
                 delete formData.maxBeltSpeed;
                 delete formData.maxPipeSpeed;
@@ -293,6 +297,7 @@ export default function ProductionPlannerWorker()
         {
             let requestedQty = parseFloat(self.inputItems[itemKey]);
             let maxMergedQty = self.options.maxBeltSpeed;
+
 
                 if(self.items[itemKey].category === 'liquid' || self.items[itemKey].category === 'gas')
                 {

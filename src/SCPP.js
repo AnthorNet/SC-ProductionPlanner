@@ -1,6 +1,10 @@
 /* global Intl, URL, gtag */
 
-import ProductionPlannerWorker from './Worker.js';
+// WORKERS
+import ProductionWorker                             from './ProductionWorker.js';
+import Worker_Wrapper                               from './Worker/Wrapper.js';
+import Solver_Simple                                from './Solver/Simple.js';
+import Solver_Realistic                             from './Solver/Realistic.js';
 
 export default class SCPP
 {
@@ -24,6 +28,17 @@ export default class SCPP
         this.intervalScriptsVERSION     = null;
 
         this.activatedMods              = [];
+
+        this.availableWorkers           = {
+            SIMPLE                          : {
+                name    : 'Solver_Simple',
+                class   : Solver_Simple
+            },
+            REALISTIC                       : {
+                name    : 'Solver_Realistic',
+                class   : Solver_Realistic
+            }
+        };
     }
 
     start()
@@ -168,7 +183,6 @@ export default class SCPP
                 }
             ]
         });
-
 
         return this.setupEvents();
     }
@@ -410,6 +424,8 @@ export default class SCPP
         }.bind(this));
     }
 
+
+
     reset()
     {
         // Reset Network Graph
@@ -417,11 +433,7 @@ export default class SCPP
         this.graph.off('tap', 'node');
 
         // Terminate worker if needed
-        if(this.worker !== undefined && this.worker !== null)
-        {
-            this.worker.terminate();
-            this.worker = null;
-        }
+        this.terminateWorker();
 
         $('#productionList').empty();
         $('#itemsList').empty();
@@ -431,12 +443,27 @@ export default class SCPP
         this.hideLoader();
     }
 
+    terminateWorker()
+    {
+        if(this.worker !== undefined && this.worker !== null)
+        {
+            this.worker.terminate();
+            this.worker = null;
+        }
+    }
+
+
+
     calculate(formData, initialCall)
     {
         this.reset();
 
-        let $this       = this;
-        let blobScript  = new Blob([ '(', ProductionPlannerWorker.toString(), ')()' ], { type: 'application/javascript' });
+        // Create a custom worker based on required view
+        let blobScript  = new Blob([
+                Worker_Wrapper.toString(), ';',
+                this.availableWorkers[formData.view].class.toString(), ';',
+                '(', ProductionWorker.toString(), ')(' + this.availableWorkers[formData.view].name + ');'
+            ], { type: 'application/javascript' });
         let blobURL     = URL.createObjectURL(blobScript);
             this.worker = new Worker(blobURL);
 
@@ -445,64 +472,41 @@ export default class SCPP
         // Planner states
         this.worker.onmessage = function(e)
         {
-            if(e.data.type === 'showLoader')
+            switch(e.data.type)
             {
-                $this.showLoader();
-                return;
-            }
-            if(e.data.type === 'updateLoaderText')
-            {
-                $this.updateLoaderText(e.data.text);
-                return;
+                case 'showLoader':
+                    return this.showLoader();
+                case 'updateLoaderText':
+                    return this.updateLoaderText(e.data.text);
+                case 'updateUrl':
+                    if(initialCall === false && this.doUpdateUrl !== false)
+                    {
+                        return this.updateUrl(e.data.url);
+                    }
+                    return;
+
+                case 'updateGraphNetwork':
+                    return this.updateGraphNetwork(e.data.nodes, e.data.edges, formData.direction);
+
+                case 'updateRequiredPower':
+                    $('#requiredPower').html(
+                        new Intl.NumberFormat(this.language)
+                                .format(Math.ceil(e.data.power)) + ' MW'
+                    );
+                    return ;
+
+                case 'updateTreeList':
+                case 'updateItemsList':
+                case 'updateBuildingsList':
+                    return this[e.data.type](e.data.data);
+
+                case 'done':
+                    return this.terminateWorker();
             }
 
-            if(e.data.type === 'updateUrl')
-            {
-                if(initialCall === false && $this.doUpdateUrl !== false)
-                {
-                    $this.updateUrl(e.data.url);
-                }
-
-                return;
-            }
-            if(e.data.type === 'updateGraphNetwork')
-            {
-                $this.updateGraphNetwork(e.data.nodes, e.data.edges, e.data.direction);
-                return;
-            }
-            if(e.data.type === 'updateRequiredPower')
-            {
-                $('#requiredPower').html(
-                    new Intl.NumberFormat($this.language)
-                            .format(Math.ceil(e.data.power)) + ' MW'
-                );
-                return;
-            }
-
-            if(e.data.type === 'updateTreeList')
-            {
-                $this.updateTreeList(e.data.html);
-                return;
-            }
-            if(e.data.type === 'updateItemsList')
-            {
-                $this.updateItemsList(e.data.html);
-                return;
-            }
-            if(e.data.type === 'updateBuildingsList')
-            {
-                $this.updateBuildingsList(e.data.html);
-                return;
-            }
-
-            if(e.data.type === 'done')
-            {
-                this.terminate();
-                return;
-            }
-
+            // Another command?
             console.log('onmessage received:', e.data);
-        };
+        }.bind(this);
 
         // Launch it!
         this.worker.postMessage({
@@ -596,14 +600,236 @@ export default class SCPP
             });
     }
 
-    updateItemsList(html)
+    updateItemsList(items)
     {
-        $('#itemsList').html(html);
+            this.updateLoaderText('Generating items list...');
+        let html        = [];
+        let listItems   = Object.keys(items).sort((a, b) => items[b] - items[a]);
+
+        if(listItems.length === 0)
+        {
+            html.push('<p class="p-3 text-center">Please select at least one item in the production list.</p>');
+        }
+        else
+        {
+            html.push('<table class="table table-striped mb-0">');
+
+            html.push('<thead>');
+                html.push('<tr>');
+                    html.push('<th></th>');
+                    html.push('<th>Needed per minute</th>');
+                html.push('</tr>');
+            html.push('</thead>');
+
+            html.push('<tbody>');
+
+            for(let i = 0; i < listItems.length; i++)
+            {
+                let itemId  = listItems[i];
+
+                html.push('<tr>');
+                    html.push('<td width="40"><img src="' + this.itemsData[itemId].image + '" style="width: 40px;" /></td>');
+                    html.push('<td class="align-middle">');
+
+                        if(this.itemsData[itemId].category === 'liquid' || this.itemsData[itemId].category === 'gas')
+                        {
+                            html.push(new Intl.NumberFormat(this.language).format(items[itemId]) + ' m³/min of ');
+                        }
+                        else
+                        {
+                            html.push(new Intl.NumberFormat(this.language).format(items[itemId]) + ' units/min of ');
+                        }
+
+                        if(this.itemsData[itemId].url !== undefined)
+                        {
+                            html.push('<a href="' + this.itemsData[itemId].url + '">' + this.itemsData[itemId].name + '</a>');
+                        }
+                        else
+                        {
+                            html.push('<a href="' + this.baseUrls.items + '/id/' + itemId + '/name/' + this.itemsData[itemId].name + '">' + this.itemsData[itemId].name + '</a>');
+                        }
+
+                   html.push('</td>');
+                html.push('</tr>');
+            }
+
+            html.push('</tbody>');
+            html.push('</table>');
+        }
+
+        $('#itemsList').html(html.join(''));
     }
 
-    updateBuildingsList(html)
+    updateBuildingsList(buildings)
     {
-        $('#buildingsList').html(html);
+            this.updateLoaderText('Generating buildings list...');
+        let html                = [];
+        let buildingsListRecipe = {};
+        let listBuildings       = Object.keys(buildings).sort((a, b) => buildings[b] - buildings[a]);
+
+        if(listBuildings.length === 0)
+        {
+            html.push('<p class="p-3 text-center">Please select at least one item in the production list.</p>');
+        }
+        else
+        {
+            html.push('<table class="table table-striped mb-0">');
+
+            for(let i = 0; i < listBuildings.length; i++)
+            {
+                let buildingId          = listBuildings[i];
+                let currentRecipe       = null;
+                let buildingClassName   = this.buildingsData[buildingId].className.replace(/Build_/g, 'Desc_');
+
+                // Build recipe...
+                for(let recipeId in this.recipesData)
+                {
+                    if(this.recipesData[recipeId].produce[buildingClassName] !== undefined)
+                    {
+                        currentRecipe = [];
+
+                        for(let ingredient in this.recipesData[recipeId].ingredients)
+                        {
+                            for(let itemId in this.itemsData)
+                            {
+                                if(this.itemsData[itemId].className === ingredient)
+                                {
+                                    currentRecipe.push({
+                                        id      : itemId,
+                                        name    : this.itemsData[itemId].name,
+                                        image   : this.itemsData[itemId].image,
+                                        qty     : this.recipesData[recipeId].ingredients[ingredient]
+                                    });
+
+                                    break;
+                                }
+                            }
+                            for(let itemId in this.toolsData)
+                            {
+                                if(this.toolsData[itemId].className === ingredient)
+                                {
+                                    currentRecipe.push({
+                                        id      : itemId,
+                                        name    : this.toolsData[itemId].name,
+                                        image   : this.toolsData[itemId].image,
+                                        qty     : this.recipesData[recipeId].ingredients[ingredient]
+                                    });
+
+                                    break;
+                                }
+                            }
+                        }
+
+                        break;
+                    }
+                }
+
+                html.push('<tr>');
+                html.push('<td width="40" class="align-middle"><img src="' + this.buildingsData[buildingId].image + '" style="width: 40px;" /></td>');
+
+                html.push('<td class="align-middle">');
+                    html.push(new Intl.NumberFormat(this.language).format(buildings[buildingId]) + 'x ');
+
+                    if(this.buildingsData[buildingId].url !== undefined)
+                    {
+                        html.push('<a href="' + this.buildingsData[buildingId].url + '">' + this.buildingsData[buildingId].name + '</a>');
+                    }
+                    else
+                    {
+                        html.push('<a href="' + this.baseUrls.buildings + '/id/' + buildingId + '/name/' + this.buildingsData[buildingId].name + '">' + this.buildingsData[buildingId].name + '</a>');
+                    }
+
+                html.push('</td>');
+
+                html.push('<td class="align-middle">');
+
+                    let toJoin = [];
+                        if(currentRecipe !== null)
+                        {
+                            for(let j = 0; j < currentRecipe.length; j++)
+                            {
+                                let recipeQty   = buildings[buildingId] * currentRecipe[j].qty;
+                                let temp        = [];
+                                    temp.push(new Intl.NumberFormat(this.language).format(recipeQty) + 'x ');
+                                    temp.push('<img src="' + currentRecipe[j].image + '" title="' + currentRecipe[j].name + '" style="width: 24px;" />');
+
+                                    if(buildingsListRecipe[currentRecipe[j].id] === undefined)
+                                    {
+                                        buildingsListRecipe[currentRecipe[j].id] = recipeQty;
+                                    }
+                                    else
+                                    {
+                                        buildingsListRecipe[currentRecipe[j].id] += recipeQty;
+                                    }
+
+                                toJoin.push(temp.join(''));
+                            }
+                        }
+
+                    html.push(toJoin.join(', '));
+
+                html.push('</td>');
+
+                html.push('</tr>');
+            }
+
+            html.push('<tr>');
+            html.push('<td width="50"></td>');
+            html.push('<td><strong>Total:</strong></td>');
+            html.push('<td class="p-0"><ul class="list-group list-group-flush">');
+
+            let totalKeys = Object.keys(buildingsListRecipe).sort((a, b) => buildingsListRecipe[b] - buildingsListRecipe[a])
+                for(let i = 0; i < totalKeys.length; i++)
+                {
+                    let idRecipe = totalKeys[i];
+                    html.push('<li class="list-group-item">');
+
+                    html.push(new Intl.NumberFormat(this.language).format(buildingsListRecipe[idRecipe]) + 'x ');
+
+                    if(this.itemsData[idRecipe] !== undefined)
+                    {
+                        html.push('<img src="' + this.itemsData[idRecipe].image + '" title="' + this.itemsData[idRecipe].name + '" style="width: 24px;" /> ');
+
+                        if(this.itemsData[idRecipe].url !== undefined)
+                        {
+                            html.push('<a href="' + this.itemsData[idRecipe].url + '">' + this.itemsData[idRecipe].name + '</a>');
+                        }
+                        else
+                        {
+                            html.push('<a href="' + this.baseUrls.items + '/id/' + idRecipe + '/name/' + this.itemsData[idRecipe].name + '">' + this.itemsData[idRecipe].name + '</a>');
+                        }
+                    }
+                    else
+                    {
+                        if(this.toolsData[idRecipe] !== undefined)
+                        {
+                            html.push('<img src="' + this.toolsData[idRecipe].image + '" title="' + this.toolsData[idRecipe].name + '" style="width: 24px;" /> ');
+
+                            if(this.toolsData[idRecipe].url !== undefined)
+                            {
+                                html.push('<a href="' + this.toolsData[idRecipe].url + '">' + this.toolsData[idRecipe].name + '</a>');
+                            }
+                            else
+                            {
+                                html.push('<a href="' + this.baseUrls.tools + '/id/' + idRecipe + '/name/' + this.toolsData[idRecipe].name + '">' + this.toolsData[idRecipe].name + '</a>');
+                            }
+                        }
+                        else
+                        {
+                            html.push(idRecipe);
+                        }
+                    }
+
+                    html.push('</li>');
+                }
+
+            html.push('</ul></td>');
+            html.push('</tr>');
+
+            html.push('</table>');
+        }
+
+        $('#buildingsList').html(html.join(''));
     }
 
     hideLoader()

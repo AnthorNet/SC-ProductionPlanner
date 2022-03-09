@@ -210,7 +210,7 @@ export default class SCPP
             let inputGroup      = $(e.currentTarget).parent().parent();
             let input           = inputGroup.find('input');
             let dataValue       = parseInt($(e.currentTarget).attr('data-value'));
-            let currentValue    = parseInt(input.val());
+            let currentValue    = parseFloat(input.val());
             //let maxQty          = parseInt(input.attr('data-maxQty'));
             let newValue        = currentValue + dataValue;
 
@@ -233,7 +233,7 @@ export default class SCPP
             //if((newValue + 10) > maxQty){ inputGroup.find('.fastForward').addClass('disabled'); }
         }.bind(this));
 
-        $('input.requireInput').on('keyup', function(e){
+        $('input.requireInput').on('keyup mouseup', function(e){
             /*
             if($(e.currentTarget).val() > parseInt($(e.currentTarget).attr('data-maxQty')))
             {
@@ -241,7 +241,7 @@ export default class SCPP
             }
             */
 
-            if(parseInt($(e.currentTarget).val()) === 0)
+            if(parseFloat($(e.currentTarget).val()) === 0)
             {
                 $(e.currentTarget).closest('.media').addClass('d-none').removeClass('d-flex');
                 $('.addOneItem[data-id=' + $(e.currentTarget).attr('data-id') + '][data-type=' + $(e.currentTarget).attr('data-type') + ']').addClass('d-flex').removeClass('d-none');

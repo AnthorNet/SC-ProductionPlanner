@@ -240,7 +240,7 @@ export default class Worker_Wrapper
                 }
                 else
                 {
-                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.locale).format(Math.ceil(nodeData.qty))
+                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.locale).format(Math.round(nodeData.qty * 1000) / 1000)
                                                     + ' ' + this.items[nodeData.itemId].name;
                 }
             }
@@ -333,7 +333,7 @@ export default class Worker_Wrapper
                 }
                 else
                 {
-                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.locale).format(Math.ceil(nodeData.neededQty))
+                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.locale).format(Math.round(nodeData.neededQty * 1000) / 1000)
                                                     + ' ' + this.items[nodeData.itemId].name;
                 }
 

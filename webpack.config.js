@@ -23,7 +23,10 @@ module.exports = env => {
         optimization    : {
             minimize        : true,
             minimizer       : [
-                //new TerserPlugin({test: /\.js(\?.*)?$/i})
+                new TerserPlugin({
+                    test: /\.js(\?.*)?$/i,
+                    terserOptions: {keep_classnames: true}
+                })
             ]
         },
 

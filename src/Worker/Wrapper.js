@@ -532,7 +532,7 @@ export default class Worker_Wrapper
                                 }
                             }
 
-                            return this.recipes[a].name.localeCompare(this.recipes[b].name);
+                            return this.recipes[a].className.localeCompare(this.recipes[b].className);
                         }
 
                     return aLength - bLength;

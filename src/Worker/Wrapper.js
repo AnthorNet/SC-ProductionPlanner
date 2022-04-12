@@ -431,7 +431,7 @@ export default class Worker_Wrapper
         return false;
     }
 
-    getRecipeToProduceItemId(itemId)
+    getRecipeToProduceItemId(itemId, mainItemId)
     {
         let currentItemClassName    = this.items[itemId].className;
         let availableRecipes        = [];
@@ -530,6 +530,12 @@ export default class Worker_Wrapper
                                 {
                                     return produceB - produceA;
                                 }
+                            }
+
+                            // Use Rubber instead of Plastic
+                            if(itemId === 'Desc_HeavyOilResidue_C' && a === 'Recipe_Rubber_C' && b === 'Recipe_Plastic_C')
+                            {
+                                return -1;
                             }
 
                             return this.recipes[a].className.localeCompare(this.recipes[b].className);

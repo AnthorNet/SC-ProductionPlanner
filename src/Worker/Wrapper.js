@@ -431,7 +431,7 @@ export default class Worker_Wrapper
         return false;
     }
 
-    getRecipeToProduceItemId(itemId, mainItemId)
+    getRecipeToProduceItemId(itemId)
     {
         let currentItemClassName    = this.items[itemId].className;
         let availableRecipes        = [];
@@ -441,7 +441,7 @@ export default class Worker_Wrapper
             {
                 let recipeKey = this.altRecipes[i];
 
-                    if(['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C'].includes(recipeKey)){ continue; }
+                    if(['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C', 'Recipe_Protein_Hog_C', 'Recipe_Protein_Spitter_C', 'Recipe_Protein_Crab_C', 'Recipe_Protein_Stinger_C'].includes(recipeKey)){ continue; }
                     if(itemId === 'Desc_Water_C') // Force water to be extracted...
                     {
                         continue;
@@ -463,7 +463,7 @@ export default class Worker_Wrapper
 
             for(let recipeKey in this.recipes)
             {
-                if(['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C'].includes(recipeKey)){ continue; }
+                if(['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C', 'Recipe_Protein_Hog_C', 'Recipe_Protein_Spitter_C', 'Recipe_Protein_Crab_C', 'Recipe_Protein_Stinger_C'].includes(recipeKey)){ continue; }
 
                 if(this.isAlternateRecipe(this.recipes[recipeKey]) === false)
                 {

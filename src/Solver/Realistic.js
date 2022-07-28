@@ -1075,6 +1075,8 @@ export default class Solver_Realistic extends Worker_Wrapper
     {
         super.addLabels();
 
+        let frackingExtractors = {};
+
         for(let i = 0; i < this.graphNodes.length; i++)
         {
             let nodeData = this.graphNodes[i].data;
@@ -1103,25 +1105,38 @@ export default class Solver_Realistic extends Worker_Wrapper
 
                     // Calculate required power!
                     let powerUsage = 0;
-                        // Basic building
-                        if(this.buildings[nodeData.buildingType].powerUsed !== undefined)
-                        {
-                            powerUsage = this.buildings[nodeData.buildingType].powerUsed;
-                        }
-                        // Fracking exrtractor
+                        // Fracking extractor
                         if(nodeData.buildingType === 'Build_FrackingExtractor_C')
                         {
-                            //TODO: Average power based on max Extractor?
-                            powerUsage = this.buildings.Build_FrackingSmasher_C.powerUsed;
+                            // Wait to have total building to do an average calculation based on used recipe...
+                            if(frackingExtractors[nodeData.recipe] === undefined)
+                            {
+                                frackingExtractors[nodeData.recipe] = 0;
+                            }
+                            frackingExtractors[nodeData.recipe]++;
                         }
-                        // Custom recipe power usage (AVERAGE)
-                        if(this.buildings[nodeData.buildingType].powerUsedRecipes !== undefined && this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe] !== undefined)
+                        else
                         {
-                            powerUsage = (this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][0] + this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][1]) / 2;
-                        }
+                            // Basic building
+                            if(this.buildings[nodeData.buildingType].powerUsed !== undefined)
+                            {
+                                powerUsage = this.buildings[nodeData.buildingType].powerUsed;
+                            }
 
-                        this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.6);
+                            // Custom recipe power usage (AVERAGE)
+                            if(this.buildings[nodeData.buildingType].powerUsedRecipes !== undefined && this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe] !== undefined)
+                            {
+                                powerUsage = (this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][0] + this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][1]) / 2;
+                            }
+
+                            this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.6);
+                        }
                 }
+        }
+
+        for(let recipeId in frackingExtractors)
+        {
+            this.requiredPower += Math.ceil(frackingExtractors[recipeId] / 6) * this.buildings.Build_FrackingSmasher_C.powerUsed;
         }
     }
 

@@ -649,24 +649,26 @@ export default class Solver_Simple extends Worker_Wrapper
 
                     // Calculate required power!
                     let powerUsage = 0;
-                        // Basic building
-                        if(this.buildings[nodeData.buildingType].powerUsed !== undefined)
-                        {
-                            powerUsage = this.buildings[nodeData.buildingType].powerUsed;
-                        }
                         // Fracking exrtractor
                         if(nodeData.buildingType === 'Build_FrackingExtractor_C')
                         {
-                            //TODO: Average power based on max Extractor?
-                            powerUsage = this.buildings.Build_FrackingSmasher_C.powerUsed;
+                            this.requiredPower += Math.ceil((nodeData.qtyUsed / nodeData.qtyProducedDefault) / 6) * this.buildings.Build_FrackingSmasher_C.powerUsed;
                         }
-                        // Custom recipe power usage (AVERAGE)
-                        if(this.buildings[nodeData.buildingType].powerUsedRecipes !== undefined && this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe] !== undefined)
+                        else
                         {
-                            powerUsage = (this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][0] + this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][1]) / 2;
-                        }
+                            // Basic building
+                            if(this.buildings[nodeData.buildingType].powerUsed !== undefined)
+                            {
+                                powerUsage = this.buildings[nodeData.buildingType].powerUsed;
+                            }
+                            // Custom recipe power usage (AVERAGE)
+                            if(this.buildings[nodeData.buildingType].powerUsedRecipes !== undefined && this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe] !== undefined)
+                            {
+                                powerUsage = (this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][0] + this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][1]) / 2;
+                            }
 
-                        this.requiredPower     += (nodeData.qtyUsed / nodeData.qtyProducedDefault) * (powerUsage * Math.pow(1, 1.6));
+                            this.requiredPower     += (nodeData.qtyUsed / nodeData.qtyProducedDefault) * powerUsage;
+                        }
                 }
         }
     }

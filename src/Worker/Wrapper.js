@@ -419,6 +419,10 @@ export default class Worker_Wrapper
         {
             return false;
         }
+        if(recipe.className === '/Game/FactoryGame/Recipes/AlternateRecipes/Parts/Recipe_Alternate_EnrichedCoal.Recipe_Alternate_EnrichedCoal_C')
+        {
+            return false;
+        }
         if(recipe.className.startsWith('/Game/FactoryGame/Recipes/AlternateRecipes'))
         {
             return true;

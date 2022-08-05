@@ -485,17 +485,8 @@ export default class Worker_Wrapper
             {
                 // Order by produce length
                 availableRecipes.sort(function(a, b){
-                    let aLength = 0;
-                    let bLength = 0;
-
-                        for(let item in this.recipes[a].produce)
-                        {
-                            aLength++;
-                        }
-                        for(let item in this.recipes[b].produce)
-                        {
-                            bLength++;
-                        }
+                    let aLength = Object.keys(this.recipes[a].produce).length;
+                    let bLength = Object.keys(this.recipes[b].produce).length;
 
                         if(aLength === bLength)
                         {
@@ -620,7 +611,14 @@ export default class Worker_Wrapper
                                 html.push('<div class="child">');
                                     html.push('<img src="' + this.items[itemId].image + '" style="width: 40px;" class="mr-3" />');
 
-                                    html.push(new Intl.NumberFormat(this.locale).format(this.requestedItems[itemId]) + 'x ');
+                                    if(this.items[itemId].category === 'liquid' || this.items[itemId].category === 'gas')
+                                    {
+                                        html.push(new Intl.NumberFormat(this.language).format(this.requestedItems[itemId]) + 'm³ ');
+                                    }
+                                    else
+                                    {
+                                        html.push(new Intl.NumberFormat(this.locale).format(this.requestedItems[itemId]) + 'x ');
+                                    }
 
                                     if(this.items[itemId].url !== undefined)
                                     {
@@ -654,17 +652,17 @@ export default class Worker_Wrapper
 
     buildHierarchyTree(parentId)
     {
-        var html = [];
+        let html = [];
 
         // Build current parentId childrens
-        var children = [];
-        for(let k = 0; k < this.graphEdges.length; k++)
-        {
-            if(this.graphEdges[k].data.target === parentId)
+        let children = [];
+            for(let k = 0; k < this.graphEdges.length; k++)
             {
-                children.push(this.graphEdges[k]);
+                if(this.graphEdges[k].data.target === parentId)
+                {
+                    children.push(this.graphEdges[k]);
+                }
             }
-        }
 
         if(children.length > 0)
         {
@@ -685,7 +683,14 @@ export default class Worker_Wrapper
                                 html.push('<img src="' + this.items[this.graphNodes[k].data.itemId].image + '" alt="' + this.items[this.graphNodes[k].data.itemId].name + '" style="width: 40px;" class="mr-3" />');
 
                                 html.push('<div class="media-body">');
-                                    html.push(new Intl.NumberFormat(this.locale).format(this.graphNodes[k].data.neededQty) + 'x ');
+                                    if(this.items[this.graphNodes[k].data.itemId].category === 'liquid' || this.items[this.graphNodes[k].data.itemId].category === 'gas')
+                                    {
+                                        html.push(new Intl.NumberFormat(this.language).format(this.graphNodes[k].data.neededQty / 1000) + 'm³ ');
+                                    }
+                                    else
+                                    {
+                                        html.push(new Intl.NumberFormat(this.locale).format(this.graphNodes[k].data.neededQty) + 'x ');
+                                    }
 
                                     if(this.items[this.graphNodes[k].data.itemId].url !== undefined)
                                     {

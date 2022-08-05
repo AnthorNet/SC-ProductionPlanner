@@ -58,8 +58,7 @@ export default class Solver_Simple extends Worker_Wrapper
     {
         console.log('startMainNode', itemKey, mainRequiredQty);
 
-        let currentRecipe           = this.getRecipeToProduceItemId(itemKey);
-
+        let currentRecipe = this.getRecipeToProduceItemId(itemKey);
             if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
             {
                 mainRequiredQty *= 1000;

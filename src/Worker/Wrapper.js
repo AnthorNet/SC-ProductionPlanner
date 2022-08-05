@@ -532,7 +532,13 @@ export default class Worker_Wrapper
                             {
                                 return -1;
                             }
+                            if(itemId === 'Desc_HeavyOilResidue_C' && a === 'Recipe_Plastic_C' && b === 'Recipe_Rubber_C')
+                            {
+                                return 1;
+                            }
 
+                            //TODO: Add power/items sorting?
+                            //TODO: Fix Firefox sorting in reverse order?
                             return this.recipes[a].className.localeCompare(this.recipes[b].className);
                         }
 

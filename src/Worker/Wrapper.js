@@ -83,12 +83,19 @@ export default class Worker_Wrapper
         }
 
         // Mods
-        if(formData.activatedMods !== undefined && formData.activatedMods.length > 0)
+        if(formData.mods === undefined && formData.activatedMods !== undefined && formData.activatedMods.length > 0)
         {
             this.url.mods = [];
             for(let i = 0; i < formData.activatedMods.length; i++)
             {
-                this.url.mods.push(formData.activatedMods[i].data.id);
+                this.url.mods.push(formData.activatedMods[i].data.idSML);
+            }
+        }
+        else
+        {
+            if(formData.mods !== undefined)
+            {
+                this.url.mods = formData.mods;
             }
         }
 

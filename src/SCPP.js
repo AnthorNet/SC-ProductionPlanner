@@ -326,7 +326,17 @@ export default class SCPP
 
     updateRequired(initialCall = false)
     {
-        let  formData = {};
+        let fullRefreshRequired = false;
+        let activatedMods       = [];
+            if(this.activatedMods.length > 0)
+            {
+                for(let i = 0; i < this.activatedMods.length; i++)
+                {
+                    activatedMods.push(this.activatedMods[i].data.idSML);
+                }
+            }
+
+        let formData            = {};
 
         // Generate required list
         $('.requireInput').each(function(){
@@ -382,7 +392,39 @@ export default class SCPP
                         }
                         else
                         {
-                            formData[$(this).attr('name').replace('[]', '')] = $(this).children("option:selected").val();
+                            if($(this).attr('name') === 'mods[]')
+                            {
+                                $.each($(this).children("option"), function(key, value)
+                                {
+                                    let currentValue = $(this).val();
+                                    let isSelected   = $(this).is(':selected');
+
+                                        if(isSelected === true)
+                                        {
+                                            if(formData.mods === undefined)
+                                            {
+                                                formData.mods = [];
+                                            }
+                                            formData.mods.push(currentValue);
+
+                                            if(activatedMods.length === 0 || (activatedMods.length > 0 && activatedMods.includes(currentValue) === false))
+                                            {
+                                                fullRefreshRequired = true;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if(activatedMods.length > 0 && activatedMods.includes(currentValue) === true)
+                                            {
+                                                fullRefreshRequired = true;
+                                            }
+                                        }
+                                });
+                            }
+                            else
+                            {
+                                formData[$(this).attr('name').replace('[]', '')] = $(this).children("option:selected").val();
+                            }
                         }
                     }
                 }
@@ -420,7 +462,7 @@ export default class SCPP
                 formData.activatedMods = this.activatedMods;
             }
 
-            this.calculate(formData, initialCall);
+            this.calculate(formData, initialCall, fullRefreshRequired);
         }.bind(this));
     }
 
@@ -454,7 +496,7 @@ export default class SCPP
 
 
 
-    calculate(formData, initialCall)
+    calculate(formData, initialCall, fullRefreshRequired = false)
     {
         this.reset();
 
@@ -479,14 +521,25 @@ export default class SCPP
                 case 'updateLoaderText':
                     return this.updateLoaderText(e.data.text);
                 case 'updateUrl':
-                    if(initialCall === false && this.doUpdateUrl !== false)
+                    if(fullRefreshRequired === true)
                     {
-                        return this.updateUrl(e.data.url);
+                        location.href = this.baseUrls.planner + '/json/' + encodeURI(JSON.stringify(e.data.url));
+                    }
+                    else
+                    {
+                        if(initialCall === false && this.doUpdateUrl !== false)
+                        {
+                            return this.updateUrl(e.data.url);
+                        }
                     }
                     return;
 
                 case 'updateGraphNetwork':
-                    return this.updateGraphNetwork(e.data.nodes, e.data.edges, formData.direction);
+                    if(fullRefreshRequired === false)
+                    {
+                        return this.updateGraphNetwork(e.data.nodes, e.data.edges, formData.direction);
+                    }
+                    return;
 
                 case 'updateRequiredPower':
                     $('#requiredPower').html(

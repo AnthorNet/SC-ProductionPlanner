@@ -43,13 +43,13 @@ export default class Solver_Simple extends Worker_Wrapper
 
             while(requestedQty >= maxMergedQty)
             {
-                this.startMainNode(itemKey, ((this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas') ? (maxMergedQty / 1000) : maxMergedQty));
+                this.startMainNode(itemKey, maxMergedQty);
                 requestedQty -= maxMergedQty;
             }
 
             if(requestedQty > 0)
             {
-                this.startMainNode(itemKey, ((this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas') ? (requestedQty / 1000) : requestedQty));
+                this.startMainNode(itemKey, requestedQty);
             }
         }
     }
@@ -59,107 +59,102 @@ export default class Solver_Simple extends Worker_Wrapper
         console.log('startMainNode', itemKey, mainRequiredQty);
 
         let currentRecipe = this.getRecipeToProduceItemId(itemKey);
-            if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
+            if(currentRecipe !== null)
             {
-                mainRequiredQty *= 1000;
-            }
+                if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
+                {
+                    this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.locale).format(mainRequiredQty / 1000) + 'm³ ' + this.items[itemKey].name + '...'});
+                }
+                else
+                {
+                    this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.locale).format(mainRequiredQty) + ' ' + this.items[itemKey].name + '...'});
+                }
 
-        if(currentRecipe !== null)
-        {
-            if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
-            {
-                this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.locale).format(mainRequiredQty / 1000) + 'm³ ' + this.items[itemKey].name + '...'});
-            }
-            else
-            {
-                this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.locale).format(mainRequiredQty) + ' ' + this.items[itemKey].name + '...'});
-            }
+                let mainNodeVisId  = itemKey + '_' + this.nodeIdKey;
+                    this.nodeIdKey++;
 
-            let mainNodeVisId  = itemKey + '_' + this.nodeIdKey;
-                this.nodeIdKey++;
+                this.graphNodes.push({data: {
+                    id          : mainNodeVisId,
+                    nodeType    : 'mainNode',
+                    itemId      : itemKey,
+                    qty         : mainRequiredQty,
+                    image       : this.items[itemKey].image
+                }});
 
-            this.graphNodes.push({data: {
-                id          : mainNodeVisId,
-                nodeType    : 'mainNode',
-                itemId      : itemKey,
-                qty         : mainRequiredQty,
-                image       : this.items[itemKey].image
-            }});
-
-            // Build tree...
-            while(mainRequiredQty > 0)
-            {
-                // Can we use by product?
-                let usesByProduct = false;
-                    for(let i = 0; i < this.graphNodes.length; i ++)
-                    {
-                        if(this.graphNodes[i].data.nodeType === 'byProductItem')
+                // Build tree...
+                while(mainRequiredQty > 0)
+                {
+                    // Can we use by product?
+                    let usesByProduct = false;
+                        for(let i = 0; i < this.graphNodes.length; i ++)
                         {
-                            if(this.graphNodes[i].data.itemId === itemKey)
+                            if(this.graphNodes[i].data.nodeType === 'byProductItem')
                             {
-                                let remainingQty    = this.graphNodes[i].data.qtyProduced - this.graphNodes[i].data.qtyUsed;
-                                let useQty          = Math.min(remainingQty, mainRequiredQty);
-                                    if(useQty < 0)
-                                    {
-                                        useQty = remainingQty;
-                                    }
-
-                                if(remainingQty > 0 && useQty > 0)
+                                if(this.graphNodes[i].data.itemId === itemKey)
                                 {
-                                    // Edge?
-                                    let haveFoundByProductEdge = false;
-                                        for(let j = 0; j < this.graphEdges.length; j++)
+                                    let remainingQty    = this.graphNodes[i].data.qtyProduced - this.graphNodes[i].data.qtyUsed;
+                                    let useQty          = Math.min(remainingQty, mainRequiredQty);
+                                        if(useQty < 0)
                                         {
-                                            if(this.graphEdges[j].data.source === this.graphNodes[i].data.id && this.graphEdges[j].data.target === mainNodeVisId)
+                                            useQty = remainingQty;
+                                        }
+
+                                    if(remainingQty > 0 && useQty > 0)
+                                    {
+                                        // Edge?
+                                        let haveFoundByProductEdge = false;
+                                            for(let j = 0; j < this.graphEdges.length; j++)
                                             {
-                                                this.graphEdges[j].data.qty    += useQty;
-                                                haveFoundByProductEdge         = true;
-                                                break;
+                                                if(this.graphEdges[j].data.source === this.graphNodes[i].data.id && this.graphEdges[j].data.target === mainNodeVisId)
+                                                {
+                                                    this.graphEdges[j].data.qty    += useQty;
+                                                    haveFoundByProductEdge         = true;
+                                                    break;
+                                                }
                                             }
-                                        }
 
-                                        if(haveFoundByProductEdge === false)
-                                        {
-                                            this.graphEdges.push({data: {
-                                                id                  : this.graphNodes[i].data.id + '_' + mainNodeVisId,
-                                                source              : this.graphNodes[i].data.id,
-                                                target              : mainNodeVisId,
-                                                itemId              : itemKey,
-                                                qty                 : useQty
-                                            }});
-                                        }
+                                            if(haveFoundByProductEdge === false)
+                                            {
+                                                this.graphEdges.push({data: {
+                                                    id                  : this.graphNodes[i].data.id + '_' + mainNodeVisId,
+                                                    source              : this.graphNodes[i].data.id,
+                                                    target              : mainNodeVisId,
+                                                    itemId              : itemKey,
+                                                    qty                 : useQty
+                                                }});
+                                            }
 
-                                    this.graphNodes[i].data.qtyUsed    += useQty;
-                                    mainRequiredQty                    -= useQty;
-                                    usesByProduct                       = true;
+                                        this.graphNodes[i].data.qtyUsed    += useQty;
+                                        mainRequiredQty                    -= useQty;
+                                        usesByProduct                       = true;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                if(usesByProduct === false)
-                {
-                    // Regular node...
-                    let qtyProducedByNode = this.buildCurrentNodeTree({
-                        id              : itemKey,
-                        recipe          : currentRecipe,
-                        qty             : mainRequiredQty,
-                        visId           : mainNodeVisId,
-                        level           : 1
-                    });
+                    if(usesByProduct === false)
+                    {
+                        // Regular node...
+                        let qtyProducedByNode = this.buildCurrentNodeTree({
+                            id              : itemKey,
+                            recipe          : currentRecipe,
+                            qty             : mainRequiredQty,
+                            visId           : mainNodeVisId,
+                            level           : 1
+                        });
 
-                    if(qtyProducedByNode !== false)
-                    {
-                        // Reduce needed quantity
-                        mainRequiredQty     -= qtyProducedByNode;
-                    }
-                    else
-                    {
-                        break; //Prevent infinite loop...
+                        if(qtyProducedByNode !== false)
+                        {
+                            // Reduce needed quantity
+                            mainRequiredQty     -= qtyProducedByNode;
+                        }
+                        else
+                        {
+                            break; //Prevent infinite loop...
+                        }
                     }
                 }
             }
-        }
     };
 
     buildCurrentNodeTree(options)
@@ -170,7 +165,6 @@ export default class Solver_Simple extends Worker_Wrapper
         }
 
         let buildingId = this.getProductionBuildingFromRecipeId(options.recipe);
-
             if(buildingId !== null)
             {
                 let productionCraftingTime  = 4,
@@ -259,7 +253,7 @@ export default class Solver_Simple extends Worker_Wrapper
                     // Does the production node already exists?
                     for(let k = 0; k < this.graphNodes.length; k++)
                     {
-                        if(this.graphNodes[k].data.nodeType === 'productionBuilding' && this.graphNodes[k].data.recipe === options.recipe)
+                        if(this.graphNodes[k].data.nodeType === 'productionBuilding' && this.graphNodes[k].data.recipe === options.recipe && options.id === this.graphNodes[k].data.itemOut)
                         {
                             currentParentVisId                      = this.graphNodes[k].data.id;
                             this.graphNodes[k].data.qtyProduced    += qtyProduced;
@@ -325,7 +319,8 @@ export default class Solver_Simple extends Worker_Wrapper
                     if(this.buildings[buildingId].supplementalLoadType !== undefined && this.buildings[buildingId].powerGenerated !== undefined)
                     {
                         let supplementalLoadRatio      = (this.buildings[buildingId].supplementalLoadRatio !== undefined) ? this.buildings[buildingId].supplementalLoadRatio : 1;
-                        let mPowerProductionExponent   = (this.buildings[buildingId].powerProductionExponent !== undefined) ? this.buildings[buildingId].powerProductionExponent : 1.3;
+                        let mPowerProductionExponent   = (this.buildings[buildingId].powerProductionExponent !== undefined) ? this.buildings[buildingId].powerProductionExponent : 1.0; // Update 7
+                        //let mPowerProductionExponent   = (this.buildings[buildingId].powerProductionExponent !== undefined) ? this.buildings[buildingId].powerProductionExponent : 1.3;
 
                         let supplementalLoadId          = this.buildings[buildingId].supplementalLoadType;
                         let supplementalLoadQty         = (qtyUsed / qtyProduced) * (60 * (this.buildings[buildingId].powerGenerated * Math.pow(1, 1 / mPowerProductionExponent)) * supplementalLoadRatio);

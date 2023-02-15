@@ -1129,7 +1129,8 @@ export default class Solver_Realistic extends Worker_Wrapper
                                 powerUsage = (this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][0] + this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][1]) / 2;
                             }
 
-                            this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.6);
+                            this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.321929); // Update 7
+                            //this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.6);
                         }
                 }
         }

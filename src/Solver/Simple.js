@@ -59,6 +59,7 @@ export default class Solver_Simple extends Worker_Wrapper
         console.log('startMainNode', itemKey, mainRequiredQty);
 
         let currentRecipe = this.getRecipeToProduceItemId(itemKey);
+            console.log('currentRecipe', currentRecipe);
             if(currentRecipe !== null)
             {
                 if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
@@ -485,6 +486,7 @@ export default class Solver_Simple extends Worker_Wrapper
                             let recipeItemId    = this.getItemIdFromClassName(recipeItemClassName);
                             let requiredQty     = (60 / productionCraftingTime * productionRecipe[recipeItemClassName]) * qtyUsed / qtyProduced;
                             let currentRecipe   = this.getRecipeToProduceItemId(recipeItemId);
+                                console.log(recipeItemId, currentRecipe)
 
                             if(currentRecipe !== null)
                             {
@@ -591,7 +593,7 @@ export default class Solver_Simple extends Worker_Wrapper
                                         }
                                     }
 
-                                    if(usesLastNode === false)
+                                    if(usesLastNode === false && recipeItemId !== null)
                                     {
                                         let lastNodeVisId = currentParentVisId + '_' + recipeItemId;
 

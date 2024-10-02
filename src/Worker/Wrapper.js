@@ -33,6 +33,7 @@ export default class Worker_Wrapper
         this.inputItems     = {};
         this.requestedItems = {};
         this.altRecipes     = [];
+        this.convRecipes    = [];
         this.requiredPower  = 0;
         this.listItems      = {};
         this.listBuildings  = {};
@@ -117,6 +118,26 @@ export default class Worker_Wrapper
             if(this.altRecipes.length > 0)
             {
                 this.url.altRecipes = this.altRecipes;
+            }
+        }
+
+        if(formData.convRecipes !== undefined)
+        {
+            this.postMessage({type: 'updateLoaderText', text: 'Applying Converter recipes...'});
+
+            this.convRecipes = [];
+            for(let i = 0; i < formData.convRecipes.length; i++)
+            {
+                let recipeKey = formData.convRecipes[i];
+                    if(this.recipes[recipeKey] !== undefined)
+                    {
+                        this.convRecipes.push(recipeKey);
+                    }
+            }
+
+            if(this.convRecipes.length > 0)
+            {
+                this.url.convRecipes = this.convRecipes;
             }
         }
 
@@ -434,7 +455,19 @@ export default class Worker_Wrapper
         {
             return true;
         }
+        if(recipe.className.startsWith('/Game/FactoryGame/Recipes/Converter/ResourceConversion/Recipe_'))
+        {
+            return true;
+        }
         if(recipe.className.search('Recipe_Residual') !== -1)
+        {
+            return true;
+        }
+        if(recipe.className.search('_Alt.Recipe_') !== -1)
+        {
+            return true;
+        }
+        if(recipe.className.search('.Recipe_Alt_RP_') !== -1)
         {
             return true;
         }
@@ -444,7 +477,14 @@ export default class Worker_Wrapper
 
     getRecipeToProduceItemId(itemId)
     {
+        if(this.items[itemId] === undefined)
+        {
+            console.log('Missing item...', itemId);
+            return null;
+        }
         let currentItemClassName    = this.items[itemId].className;
+
+        let ignoredRecipes          = ['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C', 'Recipe_Protein_Hog_C', 'Recipe_Protein_Spitter_C', 'Recipe_Protein_Crab_C', 'Recipe_Protein_Stinger_C'];
         let availableRecipes        = [];
 
             // Grab recipe that can produce the requested item...
@@ -452,7 +492,7 @@ export default class Worker_Wrapper
             {
                 let recipeKey = this.altRecipes[i];
 
-                    if(['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C', 'Recipe_Protein_Hog_C', 'Recipe_Protein_Spitter_C', 'Recipe_Protein_Crab_C', 'Recipe_Protein_Stinger_C'].includes(recipeKey)){ continue; }
+                    if(ignoredRecipes.includes(recipeKey)){ continue; }
                     if(itemId === 'Desc_Water_C') // Force water to be extracted...
                     {
                         continue;
@@ -462,7 +502,12 @@ export default class Worker_Wrapper
                     {
                         if(this.recipes[recipeKey].produce[currentItemClassName] !== undefined)
                         {
+                            // Skip loops?
                             if(recipeKey === 'Recipe_Alternate_RecycledRubber_C' && this.altRecipes.includes('Recipe_Alternate_Plastic_1_C'))
+                            {
+                                continue;
+                            }
+                            if(itemId === 'Desc_DarkEnergy_C' && this.altRecipes.includes('Recipe_SyntheticPowerShard_C'))
                             {
                                 continue;
                             }
@@ -472,9 +517,72 @@ export default class Worker_Wrapper
                     }
             }
 
+            for(let i = 0; i < this.convRecipes.length; i++)
+            {
+                let recipeKey = this.convRecipes[i];
+
+                    if(ignoredRecipes.includes(recipeKey)){ continue; }
+                    if(itemId === 'Desc_Water_C') // Force water to be extracted...
+                    {
+                        continue;
+                    }
+
+                    if(this.recipes[recipeKey] !== undefined)
+                    {
+                        if(this.recipes[recipeKey].produce[currentItemClassName] !== undefined)
+                        {
+                            // Skip loops?
+                            if(recipeKey === 'Recipe_Bauxite_Caterium_C' && this.convRecipes.includes('Recipe_Nitrogen_Bauxite_C')){ continue; }
+                            if(recipeKey === 'Recipe_Bauxite_Caterium_C' && this.convRecipes.includes('Recipe_Quartz_Bauxite_C')){ continue; }
+                            if(recipeKey === 'Recipe_Bauxite_Caterium_C' && this.convRecipes.includes('Recipe_Uranium_Bauxite_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Bauxite_Copper_C' && this.convRecipes.includes('Recipe_Nitrogen_Bauxite_C')){ continue; }
+                            if(recipeKey === 'Recipe_Bauxite_Copper_C' && this.convRecipes.includes('Recipe_Quartz_Bauxite_C')){ continue; }
+                            if(recipeKey === 'Recipe_Bauxite_Copper_C' && this.convRecipes.includes('Recipe_Uranium_Bauxite_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Caterium_Copper_C' && this.convRecipes.includes('Recipe_Bauxite_Caterium_C')){ continue; }
+                            if(recipeKey === 'Recipe_Caterium_Copper_C' && this.convRecipes.includes('Recipe_Nitrogen_Caterium_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Caterium_Quartz_C' && this.convRecipes.includes('Recipe_Bauxite_Caterium_C')){ continue; }
+                            if(recipeKey === 'Recipe_Caterium_Quartz_C' && this.convRecipes.includes('Recipe_Nitrogen_Caterium_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Coal_Iron_C' && this.convRecipes.includes('Recipe_Quartz_Coal_C')){ continue; }
+                            if(recipeKey === 'Recipe_Coal_Iron_C' && this.convRecipes.includes('Recipe_Sulfur_Coal_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Coal_Limestone_C' && this.convRecipes.includes('Recipe_Quartz_Coal_C')){ continue; }
+                            if(recipeKey === 'Recipe_Coal_Limestone_C' && this.convRecipes.includes('Recipe_Sulfur_Coal_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Copper_Quartz_C' && this.convRecipes.includes('Recipe_Bauxite_Copper_C')){ continue; }
+                            if(recipeKey === 'Recipe_Copper_Quartz_C' && this.convRecipes.includes('Recipe_Caterium_Copper_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Copper_Sulfur_C' && this.convRecipes.includes('Recipe_Bauxite_Copper_C')){ continue; }
+                            if(recipeKey === 'Recipe_Copper_Sulfur_C' && this.convRecipes.includes('Recipe_Caterium_Copper_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Iron_Limestone_C' && this.convRecipes.includes('Recipe_Limestone_Sulfur_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Limestone_Sulfur_C' && this.convRecipes.includes('Recipe_Coal_Limestone_C')){ continue; }
+                            if(recipeKey === 'Recipe_Limestone_Sulfur_C' && this.convRecipes.includes('Recipe_Iron_Limestone_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Quartz_Bauxite_C' && this.convRecipes.includes('Recipe_Caterium_Quartz_C')){ continue; }
+                            if(recipeKey === 'Recipe_Quartz_Bauxite_C' && this.convRecipes.includes('Recipe_Copper_Quartz_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Quartz_Coal_C' && this.convRecipes.includes('Recipe_Caterium_Quartz_C')){ continue; }
+                            if(recipeKey === 'Recipe_Quartz_Coal_C' && this.convRecipes.includes('Recipe_Copper_Quartz_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Sulfur_Coal_C' && this.convRecipes.includes('Recipe_Copper_Sulfur_C')){ continue; }
+                            if(recipeKey === 'Recipe_Sulfur_Coal_C' && this.convRecipes.includes('Recipe_Limestone_Sulfur_C')){ continue; }
+
+                            if(recipeKey === 'Recipe_Sulfur_Iron_C' && this.convRecipes.includes('Recipe_Copper_Sulfur_C')){ continue; }
+                            if(recipeKey === 'Recipe_Sulfur_Iron_C' && this.convRecipes.includes('Recipe_Limestone_Sulfur_C')){ continue; }
+
+                            return recipeKey;
+                        }
+                    }
+            }
+
             for(let recipeKey in this.recipes)
             {
-                if(['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C', 'Recipe_Protein_Hog_C', 'Recipe_Protein_Spitter_C', 'Recipe_Protein_Crab_C', 'Recipe_Protein_Stinger_C'].includes(recipeKey)){ continue; }
+                if(ignoredRecipes.includes(recipeKey)){ continue; }
 
                 if(this.isAlternateRecipe(this.recipes[recipeKey]) === false)
                 {
@@ -485,6 +593,16 @@ export default class Worker_Wrapper
                             availableRecipes.push(recipeKey);
                         }
                     }
+                }
+            }
+
+            if(availableRecipes.length === 0)
+            {
+                // Forcing enabling alternate recipe...
+                if(itemId === 'Desc_DissolvedSilica_C')
+                {
+                    this.postMessage({type: 'addAlternateRecipe', recipeId: 'Recipe_Alternate_Quartz_Purified_C'});
+                    availableRecipes.push('Recipe_Alternate_Quartz_Purified_C');
                 }
             }
 

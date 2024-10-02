@@ -3,6 +3,7 @@
 // WORKERS
 import ProductionWorker                             from './ProductionWorker.js';
 import Worker_Wrapper                               from './Worker/Wrapper.js';
+
 import Solver_Simple                                from './Solver/Simple.js';
 import Solver_Realistic                             from './Solver/Realistic.js';
 
@@ -27,6 +28,7 @@ export default class SCPP
         this.urlScriptsVERSION          = null;
         this.intervalScriptsVERSION     = null;
 
+        this.collectedSchematics        = new Schematics({language: this.language});
         this.activatedMods              = [];
 
         this.availableWorkers           = {
@@ -189,6 +191,21 @@ export default class SCPP
 
     setupEvents()
     {
+        $('#chooseItemOutput, #chooseItemInput').on('show.bs.modal', function(){
+            $(this).find('img').each(function(){
+                let src = $(this).attr('data-src');
+                    if(src !== undefined)
+                    {
+                        const img   = new Image();
+                        img.src     = src;
+                        img.onload  = () => {
+                          $(this).attr('src', src)
+                                 .removeAttr('data-src');
+                        };
+                    }
+            });
+        });
+
         $('.addOneItem').on('click', function(e){
             let currentId       = $(e.currentTarget).attr('data-id'),
                 currentType     = $(e.currentTarget).attr('data-type'),
@@ -197,7 +214,21 @@ export default class SCPP
 
             $(e.currentTarget).addClass('d-none').removeClass('d-flex');
             currentInput.closest('.media').find('.stepBackward').removeClass('disabled');
-            currentInput.val(1).closest('.media').addClass('d-flex').removeClass('d-none');
+            currentInput.val(1).closest('.media')
+                               .addClass('d-flex')
+                               .removeClass('d-none')
+                               .find('img').each(function(){
+                                    let src = $(this).attr('data-src');
+                                        if(src !== undefined)
+                                        {
+                                            const img   = new Image();
+                                            img.src     = src;
+                                            img.onload  = () => {
+                                                $(this).attr('src', src)
+                                                       .removeAttr('data-src');
+                                            };
+                                        }
+                                });
             $('#chooseItemInput').modal('hide');
             $('#chooseItemOutput').modal('hide');
 
@@ -234,20 +265,7 @@ export default class SCPP
         }.bind(this));
 
         $('input.requireInput').on('keyup mouseup', function(e){
-            /*
-            if($(e.currentTarget).val() > parseInt($(e.currentTarget).attr('data-maxQty')))
-            {
-                $(e.currentTarget).val(parseInt($(e.currentTarget).attr('data-maxQty')));
-            }
-            */
-
-            if(parseFloat($(e.currentTarget).val()) === 0)
-            {
-                $(e.currentTarget).closest('.media').addClass('d-none').removeClass('d-flex');
-                $('.addOneItem[data-id=' + $(e.currentTarget).attr('data-id') + '][data-type=' + $(e.currentTarget).attr('data-type') + ']').addClass('d-flex').removeClass('d-none');
-            }
-
-            this.triggerUpdateDebounce();
+            this.triggerUpdateDebounce(e.currentTarget);
         }.bind(this));
 
         $('select.requireInput').on('change', function(e){
@@ -268,10 +286,22 @@ export default class SCPP
                 }
                 else // Need to sync #mainAltRecipe
                 {
-                    $('#mainAltRecipe option[value="' + previousValue + '"]').prop('selected', false);
-                    $('#mainAltRecipe option[value="' + clickedValue + '"]').prop('selected', true);
+                    let option              = $('select[name="altRecipes[]"]:not(#mainAltRecipe) option[value="' + clickedValue + '"]');
+                    let isConverterRecipe   = option.attr('data-converter');
+                        if(isConverterRecipe === 1)
+                        {
+                            $('#mainConvRecipe option[value="' + previousValue + '"]').prop('selected', false);
+                            $('#mainConvRecipe option[value="' + clickedValue + '"]').prop('selected', true);
 
-                    $('#mainAltRecipe').selectpicker('refresh');
+                            $('#mainConvRecipe').selectpicker('refresh');
+                        }
+                        else
+                        {
+                            $('#mainAltRecipe option[value="' + previousValue + '"]').prop('selected', false);
+                            $('#mainAltRecipe option[value="' + clickedValue + '"]').prop('selected', true);
+
+                            $('#mainAltRecipe').selectpicker('refresh');
+                        }
                 }
         });
 
@@ -308,17 +338,47 @@ export default class SCPP
                 this.triggerUpdateDebounce();
         }.bind(this));
 
+        // Sync alternate recipes?
+        let collectedSchematics = this.collectedSchematics.getCollectedSchematics();
+            if(collectedSchematics.length > 0)
+            {
+                $('#loadAltRecipeFromSCIM').show().find('button').on('click', function(e){
+                    $('#mainAltRecipe').selectpicker('deselectAll');
+
+                    for(let i = 0; i < collectedSchematics.length; i++)
+                    {
+                        let currentVal = $('#mainAltRecipe').find('option[data-schematic="' + collectedSchematics[i] + '"');
+                            if(currentVal.length > 0)
+                            {
+                                currentVal.each(function(){
+                                    $('#mainAltRecipe option[value="' + $(this).val() + '"]').prop('selected', true);
+                                })
+                            }
+                    }
+
+                    $('#mainAltRecipe').selectpicker('refresh');
+                    this.triggerUpdateDebounce();
+                }.bind(this));
+            }
+
         return this.updateRequired(true);
     }
 
     // Prevent too much worker starts...
-    triggerUpdateDebounce()
+    triggerUpdateDebounce(currentTarget = null)
     {
         if(this.inputTimeout)
         {
             clearTimeout(this.inputTimeout);
         }
         this.inputTimeout = setTimeout(function(){
+            if(currentTarget !== null && parseFloat($(currentTarget).val()) === 0)
+            {
+                this.timeoutID = undefined;
+                $(currentTarget).closest('.media').addClass('d-none').removeClass('d-flex');
+                $('.addOneItem[data-id=' + $(currentTarget).attr('data-id') + '][data-type=' + $(currentTarget).attr('data-type') + ']').addClass('d-flex').removeClass('d-none');
+            }
+
             this.updateRequired();
             this.inputTimeout = null;
         }.bind(this), 500);
@@ -353,22 +413,47 @@ export default class SCPP
                 {
                     if($(this).children("option:selected").val() !== '')
                     {
-                        if($(this).attr('name') === 'altRecipes[]')
-                        {
-                            let canUpdate       = false;
-                            let isMainAltRecipe = ($(this).attr('id') === 'mainAltRecipe') ? true : false;
-
-                                if(isMainAltRecipe === false)
-                                {
-                                    let mediaParent = $(this).closest('.media');
-                                        if(mediaParent.hasClass('d-none') === false)
+                        let inputName = $(this).attr('name');
+                            switch(inputName)
+                            {
+                                case 'altRecipes[]':
+                                    let canUpdate       = false;
+                                    let isMainAltRecipe = ($(this).attr('id') === 'mainAltRecipe') ? true : false;
+                                        if(isMainAltRecipe === false)
                                         {
-                                            canUpdate = true;
+                                            let mediaParent = $(this).closest('.media');
+                                                if(mediaParent.hasClass('d-none') === false)
+                                                {
+                                                    canUpdate = true;
+                                                }
                                         }
-                                }
 
-                                if(isMainAltRecipe === true || canUpdate === true)
-                                {
+                                        if(isMainAltRecipe === true || canUpdate === true)
+                                        {
+                                            let fieldName = $(this).attr('name').replace('[]', '');
+                                                if(formData[fieldName] === undefined)
+                                                {
+                                                    formData[fieldName] = [];
+                                                }
+
+                                                $.each($(this).children("option"), function(key, value)
+                                                {
+                                                    let currentValue = $(this).val();
+                                                    let isSelected   = $(this).is(':selected');
+
+                                                        if(isSelected === true)
+                                                        {
+                                                            if((isMainAltRecipe === true || key > 0) && formData[fieldName].includes(currentValue) === false)
+                                                            {
+                                                                formData[fieldName].push(currentValue);
+                                                            }
+                                                        }
+                                                });
+                                        }
+
+                                        break;
+
+                                case 'convRecipes[]':
                                     let fieldName = $(this).attr('name').replace('[]', '');
                                         if(formData[fieldName] === undefined)
                                         {
@@ -379,53 +464,47 @@ export default class SCPP
                                         {
                                             let currentValue = $(this).val();
                                             let isSelected   = $(this).is(':selected');
-
-                                                if(isSelected === true)
+                                                if(isSelected === true && formData[fieldName].includes(currentValue) === false)
                                                 {
-                                                    if((isMainAltRecipe === true || key > 0) && formData[fieldName].includes(currentValue) === false)
-                                                    {
-                                                        formData[fieldName].push(currentValue);
-                                                    }
+                                                    formData[fieldName].push(currentValue);
                                                 }
                                         });
-                                }
-                        }
-                        else
-                        {
-                            if($(this).attr('name') === 'mods[]')
-                            {
-                                $.each($(this).children("option"), function(key, value)
-                                {
-                                    let currentValue = $(this).val();
-                                    let isSelected   = $(this).is(':selected');
 
-                                        if(isSelected === true)
-                                        {
-                                            if(formData.mods === undefined)
-                                            {
-                                                formData.mods = [];
-                                            }
-                                            formData.mods.push(currentValue);
+                                        break;
 
-                                            if(activatedMods.length === 0 || (activatedMods.length > 0 && activatedMods.includes(currentValue) === false))
+                                case 'mods[]':
+                                    $.each($(this).children("option"), function(key, value)
+                                    {
+                                        let currentValue = $(this).val();
+                                        let isSelected   = $(this).is(':selected');
+
+                                            if(isSelected === true)
                                             {
-                                                fullRefreshRequired = true;
+                                                if(formData.mods === undefined)
+                                                {
+                                                    formData.mods = [];
+                                                }
+                                                formData.mods.push(currentValue);
+
+                                                if(activatedMods.length === 0 || (activatedMods.length > 0 && activatedMods.includes(currentValue) === false))
+                                                {
+                                                    fullRefreshRequired = true;
+                                                }
                                             }
-                                        }
-                                        else
-                                        {
-                                            if(activatedMods.length > 0 && activatedMods.includes(currentValue) === true)
+                                            else
                                             {
-                                                fullRefreshRequired = true;
+                                                if(activatedMods.length > 0 && activatedMods.includes(currentValue) === true)
+                                                {
+                                                    fullRefreshRequired = true;
+                                                }
                                             }
-                                        }
-                                });
+                                    });
+
+                                    break;
+
+                                default:
+                                    formData[$(this).attr('name').replace('[]', '')] = $(this).children("option:selected").val();
                             }
-                            else
-                            {
-                                formData[$(this).attr('name').replace('[]', '')] = $(this).children("option:selected").val();
-                            }
-                        }
                     }
                 }
             }
@@ -552,6 +631,20 @@ export default class SCPP
                 case 'updateItemsList':
                 case 'updateBuildingsList':
                     return this[e.data.type](e.data.data);
+
+                case 'addAlternateRecipe':
+                    $('#mainAltRecipe option[value="' + e.data.recipeId + '"]').prop('selected', true);
+                    $('#mainAltRecipe').selectpicker('refresh');
+                    this.triggerUpdateDebounce();
+
+                    return;
+
+                case 'removeAlternateRecipe':
+                    $('#mainAltRecipe option[value="' + e.data.recipeId + '"]').prop('selected', false);
+                    $('#mainAltRecipe').selectpicker('refresh');
+                    this.triggerUpdateDebounce();
+
+                    return;
 
                 case 'done':
                     return this.terminateWorker();

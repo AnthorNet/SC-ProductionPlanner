@@ -507,6 +507,10 @@ export default class Worker_Wrapper
                             {
                                 continue;
                             }
+                            if(itemId === 'Desc_CompactedCoal_C' && this.altRecipes.includes('Recipe_Alternate_IonizedFuel_Dark_C'))
+                            {
+                                continue;
+                            }
                             if(itemId === 'Desc_DarkEnergy_C' && this.altRecipes.includes('Recipe_SyntheticPowerShard_C'))
                             {
                                 continue;

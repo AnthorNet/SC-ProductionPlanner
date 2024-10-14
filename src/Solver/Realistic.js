@@ -258,6 +258,10 @@ export default class Solver_Realistic extends Worker_Wrapper
                                         {
                                             maxBeltSpeed = this.options.maxPipeSpeed;
                                         }
+                                        if(this.items[mergingNodeData.itemOut].category === 'liquid' || this.items[mergingNodeData.itemOut].category === 'gas')
+                                        {
+                                            maxBeltSpeed = this.options.maxPipeSpeed;
+                                        }
                                     let mergedQty       = Math.min(maxMergedQty, mergingNodeData.qtyProduced, maxBeltSpeed);
                                         if(mergedQty < maxMergedQty)
                                         {

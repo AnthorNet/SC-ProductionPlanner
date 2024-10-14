@@ -589,11 +589,11 @@ export default class Solver_Realistic extends Worker_Wrapper
         {
             if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
             {
-                this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.locale).format(mainRequiredQty / 1000) + 'm³ ' + this.items[itemKey].name + '...'});
+                this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.language).format(mainRequiredQty / 1000) + 'm³ ' + this.items[itemKey].name + '...'});
             }
             else
             {
-                this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.locale).format(mainRequiredQty) + ' ' + this.items[itemKey].name + '...'});
+                this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.language).format(mainRequiredQty) + ' ' + this.items[itemKey].name + '...'});
             }
 
             let mainNodeVisId  = itemKey + '_' + this.nodeIdKey;
@@ -663,7 +663,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                     }
                     else
                     {
-                        break; //Prevent infinite loop...
+                        break; //Prevent infinite loop (Kind of :D)...
                     }
                 }
             }
@@ -678,7 +678,6 @@ export default class Solver_Realistic extends Worker_Wrapper
         }
 
         let buildingId = this.getProductionBuildingFromRecipeId(options.recipe);
-
             if(buildingId !== null)
             {
                 let productionCraftingTime  = 4,
@@ -759,9 +758,9 @@ export default class Solver_Realistic extends Worker_Wrapper
                         }
                     }
 
-                    let currentParentVisId  = buildingId + '_'  + this.nodeIdKey;
-                    let qtyProduced         = (60 / productionCraftingTime * productionPieces);
-                    let qtyUsed             = Math.min(qtyProduced, options.qty);
+                    let currentParentVisId  = buildingId + '_'  + this.nodeIdKey,
+                        qtyProduced         = (60 / productionCraftingTime * productionPieces),
+                        qtyUsed             = Math.min(qtyProduced, options.qty);
 
                         // Should we reduce building speed for belts?
                         if(productionRecipe !== false)
@@ -781,7 +780,7 @@ export default class Solver_Realistic extends Worker_Wrapper
 
                                                 if(this.items[recipeItemId] !== undefined && (this.items[recipeItemId].category === 'liquid' || this.items[recipeItemId].category === 'gas'))
                                                 {
-                                                    maxProductionSpeed = this.options.maxPipeSpeed;
+                                                    maxProductionSpeed  = this.options.maxPipeSpeed;
                                                 }
                                                 if(requiredQty > maxProductionSpeed)
                                                 {
@@ -1085,7 +1084,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                     let performance                                 = (nodeData.qtyUsed / nodeData.qtyProducedDefault * 100);
 
                         this.graphNodes[i].data.label   = this.buildings[nodeData.buildingType].name
-                                                        + ' (' + new Intl.NumberFormat(this.locale).format(Math.round(performance)) + '%)'
+                                                        + ' (' + new Intl.NumberFormat(this.language).format(Math.round(performance)) + '%)'
                                                         + '\n' + '(' + this.recipes[this.graphNodes[i].data.recipe].name + ')'
                                                         //+ '\n' + '(' + nodeData.id + ')' // DEBUG
                                                         //+ '\n' + '(' + nodeData.qtyUsed + '/' + nodeData.qtyProduced + ')' // DEBUG

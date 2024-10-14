@@ -9,7 +9,7 @@ export default class Worker_Wrapper
         this.url            = {};
 
         this.debug          = false;
-        this.locale         = 'en';
+        this.language       = 'en';
         this.translate      = {};
 
         this.buildings      = {};
@@ -48,7 +48,7 @@ export default class Worker_Wrapper
             // General variables
             this.baseUrls       = e.data.baseUrls;
             this.debug          = e.data.debug;
-            this.locale         = e.data.locale;
+            this.language       = e.data.language;
             this.translate      = e.data.translate;
 
             this.buildings      = e.data.buildings;
@@ -228,20 +228,20 @@ export default class Worker_Wrapper
                 itemName = this.alternative[edgeData.useAlternateRecipe].name;
             }
 
-            let roundedQty = +(Math.round(edgeData.qty * 100) / 100);
+            let roundedQty = +(Math.round(edgeData.qty * 10) / 10);
                 if(roundedQty < 0.1)
                 {
-                    this.graphEdges[i].data.label = itemName + ' (< 0.1/min)';
+                    this.graphEdges[i].data.label = itemName + ' (< ' + new Intl.NumberFormat(this.language).format(0.10) + '/min)';
                 }
                 else
                 {
                     if(this.items[edgeData.itemId].category === 'liquid' || this.items[edgeData.itemId].category === 'gas')
                     {
-                        this.graphEdges[i].data.label = itemName + ' (' + Math.round(Math.round(roundedQty) / 1000) + ' m³/min)';
+                        this.graphEdges[i].data.label = itemName + ' (' + new Intl.NumberFormat(this.language).format(Math.round(Math.round(edgeData.qty) / 1000)) + ' m³/min)';
                     }
                     else
                     {
-                        this.graphEdges[i].data.label = itemName + ' (' + roundedQty + ' units/min)';
+                        this.graphEdges[i].data.label = itemName + ' (' + new Intl.NumberFormat(this.language).format(Math.round(edgeData.qty * 100) / 100) + ' units/min)';
                     }
                 }
 
@@ -263,12 +263,12 @@ export default class Worker_Wrapper
             {
                 if(this.items[nodeData.itemId].category === 'liquid' || this.items[nodeData.itemId].category === 'gas')
                 {
-                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.locale).format(Math.round(Math.round(nodeData.qty) / 1000))
+                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.language).format(Math.round(Math.round(nodeData.qty) / 1000))
                                                     + ' m³ ' + this.items[nodeData.itemId].name;
                 }
                 else
                 {
-                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.locale).format(Math.round(nodeData.qty * 1000) / 1000)
+                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.language).format(Math.round(nodeData.qty * 100) / 100)
                                                     + ' ' + this.items[nodeData.itemId].name;
                 }
             }
@@ -332,7 +332,7 @@ export default class Worker_Wrapper
                     this.graphNodes[i].data.performanceColor    = this.getColorForPercentage(Math.min(100, Math.round(performance)));
                     this.graphNodes[i].data.borderWidth         = '15px';
 
-                    this.graphNodes[i].data.label   = 'x' + new Intl.NumberFormat(this.locale).format(Math.ceil(performance / 10) / 10)
+                    this.graphNodes[i].data.label   = 'x' + new Intl.NumberFormat(this.language).format(Math.ceil(performance) / 100)
                                                     + ' ' + this.buildings[nodeData.buildingType].name
                                                     + '\n' + '(' + this.recipes[this.graphNodes[i].data.recipe].name + ')';
                                                     //+ '(' + nodeData.qtyUsed + '/' + nodeData.qtyProduced + ')'; // DEBUG
@@ -356,12 +356,12 @@ export default class Worker_Wrapper
             {
                 if(this.items[nodeData.itemId].category === 'liquid' || this.items[nodeData.itemId].category === 'gas')
                 {
-                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.locale).format(Math.round(Math.round(nodeData.neededQty) / 1000))
+                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.language).format(Math.round(Math.round(nodeData.neededQty) / 1000))
                                                     + ' m³ ' + this.items[nodeData.itemId].name;
                 }
                 else
                 {
-                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.locale).format(Math.round(nodeData.neededQty * 1000) / 1000)
+                    this.graphNodes[i].data.label   = new Intl.NumberFormat(this.language).format(Math.round(nodeData.neededQty * 100) / 100)
                                                     + ' ' + this.items[nodeData.itemId].name;
                 }
 
@@ -752,7 +752,7 @@ export default class Worker_Wrapper
                                     }
                                     else
                                     {
-                                        html.push(new Intl.NumberFormat(this.locale).format(this.requestedItems[itemId]) + 'x ');
+                                        html.push(new Intl.NumberFormat(this.language).format(this.requestedItems[itemId]) + 'x ');
                                     }
 
                                     if(this.items[itemId].url !== undefined)
@@ -824,7 +824,7 @@ export default class Worker_Wrapper
                                     }
                                     else
                                     {
-                                        html.push(new Intl.NumberFormat(this.locale).format(this.graphNodes[k].data.neededQty) + 'x ');
+                                        html.push(new Intl.NumberFormat(this.language).format(this.graphNodes[k].data.neededQty) + 'x ');
                                     }
 
                                     if(this.items[this.graphNodes[k].data.itemId].url !== undefined)

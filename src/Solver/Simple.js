@@ -64,11 +64,11 @@ export default class Solver_Simple extends Worker_Wrapper
             {
                 if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
                 {
-                    this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.locale).format(mainRequiredQty / 1000) + 'm³ ' + this.items[itemKey].name + '...'});
+                    this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.language).format(mainRequiredQty / 1000) + 'm³ ' + this.items[itemKey].name + '...'});
                 }
                 else
                 {
-                    this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.locale).format(mainRequiredQty) + ' ' + this.items[itemKey].name + '...'});
+                    this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.language).format(mainRequiredQty) + ' ' + this.items[itemKey].name + '...'});
                 }
 
                 let mainNodeVisId  = itemKey + '_' + this.nodeIdKey;

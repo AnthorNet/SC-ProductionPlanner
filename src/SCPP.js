@@ -264,8 +264,13 @@ export default class SCPP
             //if((newValue + 10) > maxQty){ inputGroup.find('.fastForward').addClass('disabled'); }
         }.bind(this));
 
-        $('input.requireInput').on('keyup mouseup', function(e){
-            this.triggerUpdateDebounce(e.currentTarget);
+        $('input.requireInput').on('focusin', function(){
+            $(this).data('val', $(this).val());
+        }).on('keyup mouseup', function(e){
+            if($(e.currentTarget).data('val') !== $(e.currentTarget).val())
+            {
+                this.triggerUpdateDebounce(e.currentTarget);
+            }
         }.bind(this));
 
         $('select.requireInput').on('change', function(e){

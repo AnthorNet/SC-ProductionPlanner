@@ -53,8 +53,7 @@ export default class SCPP
         $.getJSON(this.gameDataUrl + '?v=' + this.scriptsVERSION, function(data)
         {
             this.buildingsData  = data.buildingsData;
-            this.itemsData      = data.itemsData;
-            this.toolsData      = data.toolsData;
+            this.itemsData      = Object.assign(data.toolsData, data.itemsData);
             this.recipesData    = data.recipesData;
 
             if(this.activatedMods.length > 0)
@@ -73,7 +72,7 @@ export default class SCPP
                         }
                         for(let toolId in currentMod.tools)
                         {
-                            this.toolsData[toolId] = currentMod.tools[toolId];
+                            this.itemsData[toolId] = currentMod.tools[toolId];
                         }
                         for(let recipeId in currentMod.recipes)
                         {
@@ -668,7 +667,6 @@ export default class SCPP
 
             buildings   : this.buildingsData,
             items       : this.itemsData,
-            tools       : this.toolsData,
             recipes     : this.recipesData,
 
             formData    : formData
@@ -855,20 +853,6 @@ export default class SCPP
                                     break;
                                 }
                             }
-                            for(let itemId in this.toolsData)
-                            {
-                                if(this.toolsData[itemId].className === ingredient)
-                                {
-                                    currentRecipe.push({
-                                        id      : itemId,
-                                        name    : this.toolsData[itemId].name,
-                                        image   : this.toolsData[itemId].image,
-                                        qty     : this.recipesData[recipeId].ingredients[ingredient]
-                                    });
-
-                                    break;
-                                }
-                            }
                         }
 
                         break;
@@ -952,23 +936,7 @@ export default class SCPP
                     }
                     else
                     {
-                        if(this.toolsData[idRecipe] !== undefined)
-                        {
-                            html.push('<img src="' + this.toolsData[idRecipe].image + '" title="' + this.toolsData[idRecipe].name + '" style="width: 24px;" /> ');
-
-                            if(this.toolsData[idRecipe].url !== undefined)
-                            {
-                                html.push('<a href="' + this.toolsData[idRecipe].url + '">' + this.toolsData[idRecipe].name + '</a>');
-                            }
-                            else
-                            {
-                                html.push('<a href="' + this.baseUrls.tools + '/id/' + idRecipe + '/name/' + this.toolsData[idRecipe].name + '">' + this.toolsData[idRecipe].name + '</a>');
-                            }
-                        }
-                        else
-                        {
-                            html.push(idRecipe);
-                        }
+                        html.push(idRecipe);
                     }
 
                     html.push('</li>');

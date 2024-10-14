@@ -233,6 +233,10 @@ export default class Solver_Simple extends Worker_Wrapper
                         {
                             productionCraftingTime  = this.recipes[options.recipe].mManufactoringDuration;
                         }
+                        if(this.recipes[options.recipe].mManualManufacturingMultiplier !== undefined && buildingId === 'Build_Workshop_C')
+                        {
+                            productionCraftingTime *= this.recipes[options.recipe].mManualManufacturingMultiplier;
+                        }
 
                         if(this.recipes[options.recipe].produce !== undefined)
                         {
@@ -298,8 +302,8 @@ export default class Solver_Simple extends Worker_Wrapper
                             buildingType        : buildingId,
                             recipe              : options.recipe,
                             itemOut             : options.id,
-                            qtyProducedDefault  : qtyProduced,
-                            qtyProduced         : qtyProduced,
+                            qtyProducedDefault  : ((buildingId === 'Build_Workshop_C') ? 999999999 : qtyProduced),
+                            qtyProduced         : ((buildingId === 'Build_Workshop_C') ? 999999999 : qtyProduced),
                             qtyUsed             : qtyUsed,
                             clockSpeed          : 100,
                             image               : this.buildings[buildingId].image

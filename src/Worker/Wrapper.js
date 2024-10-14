@@ -14,7 +14,6 @@ export default class Worker_Wrapper
 
         this.buildings      = {};
         this.items          = {};
-        this.tools          = {};
         this.recipes        = {};
 
         this.options        = {
@@ -53,7 +52,6 @@ export default class Worker_Wrapper
 
             this.buildings      = e.data.buildings;
             this.items          = e.data.items;
-            this.tools          = e.data.tools;
             this.recipes        = e.data.recipes;
 
             return this.initiate(e.data.formData);
@@ -153,14 +151,12 @@ export default class Worker_Wrapper
     startCalculation()
     {
         // Ensure some ordering on requested items...
-        console.log(this.requestedItems[0].id, this.requestedItems[1].id, this.requestedItems[2].id)
         this.requestedItems.sort((a, b) => {
 
             // Fuel at the end...
             if(this.items[a.id].energy !== undefined && this.items[b.id].energy === undefined){ return 1; }
             if(this.items[a.id].energy === undefined && this.items[b.id].energy !== 'fuel'){ return -1; }
         });
-        console.log(this.requestedItems[0].id, this.requestedItems[1].id, this.requestedItems[2].id)
 
         this.addInputs();
     }
@@ -339,11 +335,11 @@ export default class Worker_Wrapper
             {
                 let performance                                 = (nodeData.qtyUsed / nodeData.qtyProducedDefault * 100);
                     this.graphNodes[i].data.performance         = Math.round(performance);
-                    this.graphNodes[i].data.performanceColor    = this.getColorForPercentage(Math.min(100, Math.round(performance)));
+                    this.graphNodes[i].data.performanceColor    = ((nodeData.buildingType === 'Build_Workshop_C') ? 'rgb(255, 255, 255)' : this.getColorForPercentage(Math.min(100, Math.round(performance))));
                     this.graphNodes[i].data.borderWidth         = '15px';
 
-                    this.graphNodes[i].data.label   = 'x' + new Intl.NumberFormat(this.language).format(Math.ceil(performance) / 100)
-                                                    + ' ' + this.buildings[nodeData.buildingType].name
+                    this.graphNodes[i].data.label   = ((nodeData.buildingType === 'Build_Workshop_C') ? '' : 'x' + new Intl.NumberFormat(this.language).format(Math.ceil(performance) / 100) + ' ')
+                                                    + this.buildings[nodeData.buildingType].name
                                                     + '\n' + '(' + this.recipes[this.graphNodes[i].data.recipe].name + ')';
                                                     //+ '(' + nodeData.qtyUsed + '/' + nodeData.qtyProduced + ')'; // DEBUG
 
@@ -698,6 +694,10 @@ export default class Worker_Wrapper
             for(let i = this.recipes[recipeId].mProducedIn.length - 1; i >= 0; i--)
             {
                 let currentBuilding = this.recipes[recipeId].mProducedIn[i];
+                    if(currentBuilding === '/Game/FactoryGame/Buildable/-Shared/WorkBench/BP_WorkshopComponent.BP_WorkshopComponent_C')
+                    {
+                        return 'Build_Workshop_C';
+                    }
 
                     for(let buildingKey in this.buildings)
                     {

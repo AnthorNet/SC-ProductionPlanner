@@ -30,12 +30,12 @@ export default class Solver_Simple extends Worker_Wrapper
 
     doCalculation()
     {
-        for(let itemKey in this.requestedItems)
+        for(let i = 0; i < this.requestedItems.length; i++)
         {
-            let requestedQty = this.requestedItems[itemKey];
+            let requestedQty = this.requestedItems[i].qty;
             let maxMergedQty = this.options.maxBeltSpeed;
 
-                if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
+                if(this.items[this.requestedItems[i].id].category === 'liquid' || this.items[this.requestedItems[i].id].category === 'gas')
                 {
                     requestedQty *= 1000;
                     maxMergedQty = this.options.maxPipeSpeed;
@@ -43,13 +43,13 @@ export default class Solver_Simple extends Worker_Wrapper
 
             while(requestedQty >= maxMergedQty)
             {
-                this.startMainNode(itemKey, maxMergedQty);
+                this.startMainNode(this.requestedItems[i].id, maxMergedQty);
                 requestedQty -= maxMergedQty;
             }
 
             if(requestedQty > 0)
             {
-                this.startMainNode(itemKey, requestedQty);
+                this.startMainNode(this.requestedItems[i].id, requestedQty);
             }
         }
     }

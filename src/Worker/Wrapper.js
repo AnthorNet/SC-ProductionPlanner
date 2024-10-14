@@ -31,7 +31,7 @@ export default class Worker_Wrapper
             gasSpeed                    : 'normal'
         };
         this.inputItems     = {};
-        this.requestedItems = {};
+        this.requestedItems = [];
         this.altRecipes     = [];
         this.convRecipes    = [];
         this.requiredPower  = 0;
@@ -66,13 +66,13 @@ export default class Worker_Wrapper
     {
         this.postMessage({type: 'updateLoaderText', text: 'Checking requested items...'});
 
-        // Requested intems
+        // Requested items
         for(let itemKey in this.items)
         {
             if(formData[itemKey] !== undefined && this.items[itemKey] !== undefined)
             {
                 this.url[itemKey]               = formData[itemKey];
-                this.requestedItems[itemKey]    = formData[itemKey];
+                this.requestedItems.push({id: itemKey, qty: formData[itemKey]});
             }
         }
 
@@ -152,6 +152,16 @@ export default class Worker_Wrapper
 
     startCalculation()
     {
+        // Ensure some ordering on requested items...
+        console.log(this.requestedItems[0].id, this.requestedItems[1].id, this.requestedItems[2].id)
+        this.requestedItems.sort((a, b) => {
+
+            // Fuel at the end...
+            if(this.items[a.id].energy !== undefined && this.items[b.id].energy === undefined){ return 1; }
+            if(this.items[a.id].energy === undefined && this.items[b.id].energy !== 'fuel'){ return -1; }
+        });
+        console.log(this.requestedItems[0].id, this.requestedItems[1].id, this.requestedItems[2].id)
+
         this.addInputs();
     }
 
@@ -718,69 +728,67 @@ export default class Worker_Wrapper
     generateTreeList()
     {
         this.postMessage({type: 'updateLoaderText', text: 'Generating production list...'});
-        var html = [];
-        var requestedItemsLength = Object.keys(this.requestedItems).length;
-
-        if(requestedItemsLength === 0)
-        {
-            html.push('<p class="p-3 text-center">Please select at least one item in the production list.</p>');
-        }
-        else
-        {
-            html.push('<div class="row">');
-
-            for(let itemId in this.requestedItems)
+        let  html = [];
+            if(this.requestedItems.length === 0)
             {
-                if(requestedItemsLength >= 1)
+                html.push('<p class="p-3 text-center">Please select at least one item in the production list.</p>');
+            }
+            else
+            {
+                html.push('<div class="row">');
+
+                for(let i = 0; i < this.requestedItems.length; i++)
                 {
-                    html.push('<div class="col-sm-6">');
-                }
-                else
-                {
-                    html.push('<div>');
-                }
+                    if(this.requestedItems.length >= 1)
+                    {
+                        html.push('<div class="col-sm-6">');
+                    }
+                    else
+                    {
+                        html.push('<div>');
+                    }
 
-                    html.push('<div class="p-3">');
-                        html.push('<div class="hierarchyTree">');
-                            html.push('<div class="root">');
-                                html.push('<div class="child">');
-                                    html.push('<img src="' + this.items[itemId].image + '" style="width: 40px;" class="mr-3" />');
+                        html.push('<div class="p-3">');
+                            html.push('<div class="hierarchyTree">');
+                                html.push('<div class="root">');
+                                    html.push('<div class="child">');
+                                        html.push('<img src="' + this.items[this.requestedItems[i].id].image + '" style="width: 40px;" class="mr-3" />');
 
-                                    if(this.items[itemId].category === 'liquid' || this.items[itemId].category === 'gas')
-                                    {
-                                        html.push(new Intl.NumberFormat(this.language).format(this.requestedItems[itemId]) + 'm³ ');
-                                    }
-                                    else
-                                    {
-                                        html.push(new Intl.NumberFormat(this.language).format(this.requestedItems[itemId]) + 'x ');
-                                    }
-
-                                    if(this.items[itemId].url !== undefined)
-                                    {
-                                        html.push('<a href="' + this.items[itemId].url + '"style="line-height: 40px;">' + this.items[itemId].name + '</a>');
-                                    }
-                                    else
-                                    {
-                                        html.push('<a href="' + this.baseUrls.items + '/id/' + itemId + '/name/' + this.items[itemId].name + '"style="line-height: 40px;">' + this.items[itemId].name + '</a>');
-                                    }
-
-                                    for(let k = 0; k < this.graphNodes.length; k++)
-                                    {
-                                        if(this.graphNodes[k].data.nodeType === 'mainNode' && this.graphNodes[k].data.itemId === itemId)
+                                        if(this.items[this.requestedItems[i].id].category === 'liquid' || this.items[this.requestedItems[i].id].category === 'gas')
                                         {
-                                            html.push(this.buildHierarchyTree(this.graphNodes[k].data.id));
+                                            html.push(new Intl.NumberFormat(this.language).format(this.requestedItems[i].qty) + 'm³ ');
                                         }
-                                    }
+                                        else
+                                        {
+                                            html.push(new Intl.NumberFormat(this.language).format(this.requestedItems[i].qty) + 'x ');
+                                        }
 
+                                        if(this.items[this.requestedItems[i].id].url !== undefined)
+                                        {
+                                            html.push('<a href="' + this.items[this.requestedItems[i].id].url + '"style="line-height: 40px;">' + this.items[this.requestedItems[i].id].name + '</a>');
+                                        }
+                                        else
+                                        {
+                                            html.push('<a href="' + this.baseUrls.items + '/id/' + this.requestedItems[i].id + '/name/' + this.items[this.requestedItems[i].id].name + '"style="line-height: 40px;">' + this.items[this.requestedItems[i].id].name + '</a>');
+                                        }
+
+                                        for(let k = 0; k < this.graphNodes.length; k++)
+                                        {
+                                            if(this.graphNodes[k].data.nodeType === 'mainNode' && this.graphNodes[k].data.itemId === this.requestedItems[i].id)
+                                            {
+                                                html.push(this.buildHierarchyTree(this.graphNodes[k].data.id));
+                                            }
+                                        }
+
+                                    html.push('</div>');
                                 html.push('</div>');
                             html.push('</div>');
                         html.push('</div>');
                     html.push('</div>');
+                }
+
                 html.push('</div>');
             }
-
-            html.push('</div>');
-        }
 
         this.postMessage({type: 'updateTreeList', data: html.join('')});
     }

@@ -173,12 +173,12 @@ export default class Solver_Realistic extends Worker_Wrapper
     doCalculation()
     {
         // Parse required items!
-        for(let itemKey in this.requestedItems)
+        for(let i = 0; i < this.requestedItems.length; i++)
         {
-            let requestedQty = this.requestedItems[itemKey];
+            let requestedQty = this.requestedItems[i].qty;
             let maxMergedQty = this.options.maxBeltSpeed;
 
-                if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
+                if(this.items[this.requestedItems[i].id].category === 'liquid' || this.items[this.requestedItems[i].id].category === 'gas')
                 {
                     requestedQty *= 1000;
                     maxMergedQty = this.options.maxPipeSpeed;
@@ -186,13 +186,13 @@ export default class Solver_Realistic extends Worker_Wrapper
 
             while(requestedQty >= maxMergedQty)
             {
-                this.startMainNode(itemKey, ((this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas') ? (maxMergedQty / 1000) : maxMergedQty));
+                this.startMainNode(this.requestedItems[i].id, ((this.items[this.requestedItems[i].id].category === 'liquid' || this.items[this.requestedItems[i].id].category === 'gas') ? (maxMergedQty / 1000) : maxMergedQty));
                 requestedQty -= maxMergedQty;
             }
 
             if(requestedQty > 0)
             {
-                this.startMainNode(itemKey, ((this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas') ? (requestedQty / 1000) : requestedQty));
+                this.startMainNode(this.requestedItems[i].id, ((this.items[this.requestedItems[i].id].category === 'liquid' || this.items[this.requestedItems[i].id].category === 'gas') ? (requestedQty / 1000) : requestedQty));
             }
         }
 

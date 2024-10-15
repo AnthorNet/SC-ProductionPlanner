@@ -348,17 +348,18 @@ export default class SCPP
             {
                 $('#loadAltRecipeFromSCIM').show().find('button').on('click', function(e){
                     $('#mainAltRecipe').selectpicker('deselectAll');
-
-                    for(let i = 0; i < collectedSchematics.length; i++)
-                    {
-                        let currentVal = $('#mainAltRecipe').find('option[data-schematic="' + collectedSchematics[i] + '"');
-                            if(currentVal.length > 0)
-                            {
-                                currentVal.each(function(){
-                                    $('#mainAltRecipe option[value="' + $(this).val() + '"]').prop('selected', true);
-                                })
-                            }
-                    }
+                    
+                    let collectedSchematics = this.collectedSchematics.getCollectedSchematics();
+                        for(let i = 0; i < collectedSchematics.length; i++)
+                        {
+                            let currentVal = $('#mainAltRecipe').find('option[data-schematic="' + collectedSchematics[i] + '"');
+                                if(currentVal.length > 0)
+                                {
+                                    currentVal.each(function(){
+                                        $('#mainAltRecipe option[value="' + $(this).val() + '"]').prop('selected', true);
+                                    })
+                                }
+                        }
 
                     $('#mainAltRecipe').selectpicker('refresh');
                     this.triggerUpdateDebounce();

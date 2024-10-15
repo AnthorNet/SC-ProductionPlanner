@@ -694,7 +694,7 @@ export default class Worker_Wrapper
             for(let i = this.recipes[recipeId].mProducedIn.length - 1; i >= 0; i--)
             {
                 let currentBuilding = this.recipes[recipeId].mProducedIn[i];
-                    if(currentBuilding === '/Game/FactoryGame/Buildable/-Shared/WorkBench/BP_WorkshopComponent.BP_WorkshopComponent_C')
+                    if(currentBuilding === '/Game/FactoryGame/Buildable/-Shared/WorkBench/BP_WorkshopComponent.BP_WorkshopComponent_C' && this.recipes[recipeId].mProducedIn.length === 1)
                     {
                         return 'Build_Workshop_C';
                     }

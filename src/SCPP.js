@@ -190,7 +190,43 @@ export default class SCPP
 
     setupEvents()
     {
+        $('#outputSearch, #inputSearch').on('focusin', function(){
+            $(this).data('val', $(this).val());
+        }).on('keyup mouseup', function(e){
+            if($(e.currentTarget).data('val') !== $(e.currentTarget).val() || $(e.currentTarget).val() === '')
+            {
+                let searchString    = $(e.currentTarget).val().toLowerCase();
+                let items           = $(e.currentTarget).parent().next('.modal-body').find('[data-search=1]');
+                    items.each(function(){
+                        if($(this).find('h6 strong').text().toLowerCase().includes(searchString))
+                        {
+                            $(this).removeClass('d-none').addClass('d-flex');
+                        }
+                        else
+                        {
+                            $(this).addClass('d-none').removeClass('d-flex');
+                        }
+
+                        // Category empty?
+                        if($(this).parent().find('.d-flex').length === 0)
+                        {
+                            $(this).parent().prev('.row').addClass('d-none');
+                        }
+                        else
+                        {
+                            $(this).parent().prev('.row').removeClass('d-none');
+                        }
+                    });
+            }
+        }.bind(this));
+
         $('#chooseItemOutput, #chooseItemInput').on('show.bs.modal', function(){
+            $('#outputSearch, #inputSearch').data('val', '').val('');
+            $(this).find('.row').removeClass('d-none');
+            $(this).find('[data-search=1]').each(function(){
+                $(this).removeClass('d-none').addClass('d-flex')
+            });
+
             $(this).find('img').each(function(){
                 let src = $(this).attr('data-src');
                     if(src !== undefined)
@@ -211,7 +247,7 @@ export default class SCPP
                 currentInput    = $('input.requireInput[data-id=' + currentId + '][data-type=' + currentType + ']');
                 e.preventDefault();
 
-            $(e.currentTarget).addClass('d-none').removeClass('d-flex');
+            $(e.currentTarget).addClass('d-none').removeClass('d-flex').attr('data-search', 0);
             currentInput.closest('.media').find('.stepBackward').removeClass('disabled');
             currentInput.val(1).closest('.media')
                                .addClass('d-flex')
@@ -249,7 +285,7 @@ export default class SCPP
                 if(newValue === 0)
                 {
                     inputGroup.closest('.media').addClass('d-none').removeClass('d-flex');
-                    $('.addOneItem[data-id=' + input.attr('data-id') + ']').addClass('d-flex').removeClass('d-none');
+                    $('.addOneItem[data-id=' + input.attr('data-id') + ']').addClass('d-flex').removeClass('d-none').attr('data-search', 1);
                 }
 
                 input.val(newValue);
@@ -348,7 +384,7 @@ export default class SCPP
             {
                 $('#loadAltRecipeFromSCIM').show().find('button').on('click', function(e){
                     $('#mainAltRecipe').selectpicker('deselectAll');
-                    
+
                     let collectedSchematics = this.collectedSchematics.getCollectedSchematics();
                         for(let i = 0; i < collectedSchematics.length; i++)
                         {
@@ -381,7 +417,7 @@ export default class SCPP
             {
                 this.timeoutID = undefined;
                 $(currentTarget).closest('.media').addClass('d-none').removeClass('d-flex');
-                $('.addOneItem[data-id=' + $(currentTarget).attr('data-id') + '][data-type=' + $(currentTarget).attr('data-type') + ']').addClass('d-flex').removeClass('d-none');
+                $('.addOneItem[data-id=' + $(currentTarget).attr('data-id') + '][data-type=' + $(currentTarget).attr('data-type') + ']').addClass('d-flex').removeClass('d-none').attr('data-search', 1);
             }
 
             this.updateRequired();

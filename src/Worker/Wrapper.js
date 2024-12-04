@@ -228,11 +228,10 @@ export default class Worker_Wrapper
         {
             let edgeData    = this.graphEdges[i].data;
             let itemName    = this.items[edgeData.itemId].name;
-
-            if(edgeData.useAlternateRecipe !== undefined && edgeData.useAlternateRecipe !== null)
-            {
-                itemName = this.alternative[edgeData.useAlternateRecipe].name;
-            }
+                if(edgeData.useAlternateRecipe !== undefined && edgeData.useAlternateRecipe !== null)
+                {
+                    itemName = this.alternative[edgeData.useAlternateRecipe].name;
+                }
 
             let roundedQty = +(Math.round(edgeData.qty * 10) / 10);
                 if(roundedQty < 0.1)

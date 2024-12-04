@@ -580,14 +580,14 @@ export default class Solver_Simple extends Worker_Wrapper
                                         {
                                             if(this.graphNodes[i].data.itemId === recipeItemId)
                                             {
-                                                // Add edge between byProduct and item..
-                                                this.graphEdges.push({data: {
-                                                    id                  : this.graphNodes[i].data.id + '_' + currentParentVisId,
-                                                    source              : this.graphNodes[i].data.id,
-                                                    target              : currentParentVisId,
-                                                    itemId              : recipeItemId,
-                                                    qty                 : requiredQty
-                                                }});
+                                                for(let j = 0; j < this.graphEdges.length; j++)
+                                                {
+                                                    if(this.graphEdges[j].data.source === this.graphNodes[i].data.id && this.graphEdges[j].data.target === currentParentVisId)
+                                                    {
+                                                        this.graphEdges[j].data.qty    += requiredQty;
+                                                        break;
+                                                    }
+                                                }
 
                                                 this.graphNodes[i].data.neededQty += requiredQty;
                                                 usesLastNode                       = true;

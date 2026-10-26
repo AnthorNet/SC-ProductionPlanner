@@ -1,5 +1,15 @@
 /* global Intl */
 
+/*
+ * LP objectives, in lexicographic order, for each "optimizeFor" choice: the first one decides,
+ * the next ones break ties.
+ */
+const OBJECTIVE_ORDERS = {
+    resources   : ['resources', 'buildings'],
+    power       : ['power', 'resources', 'buildings'],
+    buildings   : ['buildings', 'resources']
+};
+
 export default class Worker_Wrapper
 {
     constructor(worker)
@@ -33,6 +43,9 @@ export default class Worker_Wrapper
         this.requestedItems = [];
         this.altRecipes     = [];
         this.convRecipes    = [];
+        this.optimizeFor    = 'resources';
+        this.maximizeOutput = false;
+        this.notice         = null;     // Message from the solver, shown on top of the tree list
         this.requiredPower  = 0;
         this.listItems      = {};
         this.listBuildings  = {};
@@ -139,8 +152,87 @@ export default class Worker_Wrapper
             }
         }
 
+        // Search options of the LP solver
+        if(OBJECTIVE_ORDERS[formData.optimizeFor] !== undefined && formData.optimizeFor !== 'resources')
+        {
+            this.optimizeFor        = formData.optimizeFor;
+            this.url.optimizeFor    = formData.optimizeFor;
+        }
+        // One-shot run from the "Maximize" button: not part of the URL
+        if(formData.productionMode === 'maximize')
+        {
+            this.maximizeOutput     = true;
+        }
+
         this.postMessage({type: 'updateUrl', url: this.url});
         this.startCalculation();
+    }
+
+    /*
+     * LP request shared by both views: requested items, inputs, recipes and search options.
+     * For the "Maximize" button the requested quantities are ratios and the provided inputs are the
+     * limits: those items only come from the inputs, everything else is made as usual.
+     */
+    solverRequest(extraction)
+    {
+        const quantities    = Object.fromEntries(this.requestedItems.map(item => [item.id, Number(item.qty)]));
+        const request       = {
+            inputs      : this.inputItems,
+            recipes     : { alternates: this.altRecipes, conversions: this.convRecipes },
+            extraction  : extraction,
+            objectives  : OBJECTIVE_ORDERS[this.optimizeFor]
+        };
+
+            if(this.maximizeOutput === true)
+            {
+                request.maximize        = quantities;
+                request.capInputs       = true;
+            }
+            else
+            {
+                request.targets         = quantities;
+            }
+
+        return request;
+    }
+
+    /*
+     * "Maximize" button: the quantities reached from the provided inputs go back to the form,
+     * which fills the outputs and runs a normal calculation with them.
+     * Returns 'stop' when the view stops here, 'retry' when there is nothing to maximize (no inputs,
+     * outputs not depending on them, nothing they can make): the view then quietly renders the
+     * requested quantities as usual, and 'continue' outside a maximize run.
+     */
+    sendMaximizedQuantities(plan)
+    {
+        if(this.maximizeOutput === false){ return 'continue'; }
+
+        const quantities = {};
+            if(plan.status === 'optimal')
+            {
+                for(const requested of this.requestedItems)
+                {
+                    // Rounded down so the inputs are always enough
+                    const reached = plan.outputs.find(output => output.item === requested.id)?.qty ?? 0;
+                        quantities[requested.id] = Math.floor(reached * 100 + 1e-6) / 100;
+                }
+            }
+
+        if(Object.keys(this.inputItems).length === 0 || Object.values(quantities).every(qty => qty <= 0))
+        {
+            this.maximizeOutput = false;
+            return 'retry';
+        }
+
+        this.postMessage({type: 'updateRequestedQuantities', quantities});
+        return 'stop';
+    }
+
+    // The loader hides once the graph is laid out: the tree list keeps the message visible
+    showNotice(text)
+    {
+        this.notice = text;
+        this.postMessage({type: 'updateLoaderText', text: text});
     }
 
     postMessage(e)
@@ -157,8 +249,6 @@ export default class Worker_Wrapper
             if(this.items[a.id].energy !== undefined && this.items[b.id].energy === undefined){ return 1; }
             if(this.items[a.id].energy === undefined && this.items[b.id].energy !== 'fuel'){ return -1; }
         });
-
-        this.addInputs();
     }
 
     endCalculation()
@@ -175,51 +265,6 @@ export default class Worker_Wrapper
     }
 
 
-    addInputs()
-    {
-        this.postMessage({type: 'updateLoaderText', text: 'Add inputs resources...'});
-
-        for(let itemKey in this.inputItems)
-        {
-            let requestedQty = parseFloat(this.inputItems[itemKey]);
-            let maxMergedQty = this.options.maxBeltSpeed;
-                if(['liquid', 'gas'].includes(this.items[itemKey].category))
-                {
-                    requestedQty *= 1000;
-                    maxMergedQty = this.options.maxPipeSpeed;
-                }
-
-                while(requestedQty >= maxMergedQty)
-                {
-                    this.graphNodes.push({data: {
-                        id                  : itemKey + '_' + (this.nodeIdKey++) + '_byProduct',
-                        nodeType            : 'byProductItem',
-                        itemId              : itemKey,
-                        qtyUsed             : 0,
-                        qtyProduced         : maxMergedQty,
-                        neededQty           : maxMergedQty,
-                        image               : this.items[itemKey].image
-                    }});
-
-                    requestedQty -= maxMergedQty;
-                }
-
-                if(requestedQty > 0)
-                {
-                    this.graphNodes.push({data: {
-                        id                  : itemKey + '_' + (this.nodeIdKey++) + '_byProduct',
-                        nodeType            : 'byProductItem',
-                        itemId              : itemKey,
-                        qtyUsed             : 0,
-                        qtyProduced         : requestedQty,
-                        neededQty           : requestedQty,
-                        image               : this.items[itemKey].image
-                    }});
-                }
-        }
-    }
-
-
     addLabels()
     {
         this.postMessage({type: 'updateLoaderText', text: 'Add labels...'});
@@ -228,10 +273,6 @@ export default class Worker_Wrapper
         {
             let edgeData    = this.graphEdges[i].data;
             let itemName    = this.items[edgeData.itemId].name;
-                if(edgeData.useAlternateRecipe !== undefined && edgeData.useAlternateRecipe !== null)
-                {
-                    itemName = this.alternative[edgeData.useAlternateRecipe].name;
-                }
 
             let roundedQty = +(Math.round(edgeData.qty * 10) / 10);
                 if(roundedQty < 0.1)
@@ -430,297 +471,6 @@ export default class Worker_Wrapper
     }
 
 
-    /*
-     * COMMON GAME FUNCTIONS
-     */
-    getItemIdFromClassName(itemClassName)
-    {
-        for(let itemId in this.items)
-        {
-            if(this.items[itemId].className === itemClassName)
-            {
-                return itemId;
-            }
-        }
-
-        return null;
-    };
-
-    isAlternateRecipe(recipe)
-    {
-        if(recipe.className === '/Game/FactoryGame/Recipes/AlternateRecipes/Parts/Recipe_Alternate_Turbofuel.Recipe_Alternate_Turbofuel_C')
-        {
-            return false;
-        }
-        if(recipe.className === '/Game/FactoryGame/Recipes/AlternateRecipes/Parts/Recipe_Alternate_EnrichedCoal.Recipe_Alternate_EnrichedCoal_C')
-        {
-            return false;
-        }
-        if(recipe.className.startsWith('/Game/FactoryGame/Recipes/AlternateRecipes'))
-        {
-            return true;
-        }
-        if(recipe.className.startsWith('/Game/FactoryGame/Recipes/Converter/ResourceConversion/Recipe_'))
-        {
-            return true;
-        }
-        if(recipe.className.search('Recipe_Residual') !== -1)
-        {
-            return true;
-        }
-        if(recipe.className.search('_Alt.Recipe_') !== -1)
-        {
-            return true;
-        }
-        if(recipe.className.search('.Recipe_Alt_RP_') !== -1)
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    getRecipeToProduceItemId(itemId)
-    {
-        if(this.items[itemId] === undefined)
-        {
-            console.log('Missing item...', itemId);
-            return null;
-        }
-        let currentItemClassName    = this.items[itemId].className;
-
-        let ignoredRecipes          = ['Recipe_Biomass_AlienOrgans_C', 'Recipe_Biomass_AlienCarapace_C', 'Recipe_Protein_Hog_C', 'Recipe_Protein_Spitter_C', 'Recipe_Protein_Crab_C', 'Recipe_Protein_Stinger_C'];
-        let availableRecipes        = [];
-
-            // Grab recipe that can produce the requested item...
-            for(let i = 0; i < this.altRecipes.length; i++)
-            {
-                let recipeKey = this.altRecipes[i];
-
-                    if(ignoredRecipes.includes(recipeKey)){ continue; }
-                    if(itemId === 'Desc_Water_C') // Force water to be extracted...
-                    {
-                        continue;
-                    }
-
-                    if(this.recipes[recipeKey] !== undefined)
-                    {
-                        if(this.recipes[recipeKey].produce[currentItemClassName] !== undefined)
-                        {
-                            // Skip loops?
-                            if(recipeKey === 'Recipe_Alternate_RecycledRubber_C' && this.altRecipes.includes('Recipe_Alternate_Plastic_1_C'))
-                            {
-                                continue;
-                            }
-                            if(itemId === 'Desc_CompactedCoal_C' && this.altRecipes.includes('Recipe_Alternate_IonizedFuel_Dark_C'))
-                            {
-                                continue;
-                            }
-                            if(itemId === 'Desc_DarkEnergy_C' && this.altRecipes.includes('Recipe_SyntheticPowerShard_C'))
-                            {
-                                continue;
-                            }
-
-                            return recipeKey;
-                        }
-                    }
-            }
-
-            for(let i = 0; i < this.convRecipes.length; i++)
-            {
-                let recipeKey = this.convRecipes[i];
-
-                    if(ignoredRecipes.includes(recipeKey)){ continue; }
-                    if(itemId === 'Desc_Water_C') // Force water to be extracted...
-                    {
-                        continue;
-                    }
-
-                    if(this.recipes[recipeKey] !== undefined)
-                    {
-                        if(this.recipes[recipeKey].produce[currentItemClassName] !== undefined)
-                        {
-                            // Skip loops?
-                            if(recipeKey === 'Recipe_Bauxite_Caterium_C' && this.convRecipes.includes('Recipe_Nitrogen_Bauxite_C')){ continue; }
-                            if(recipeKey === 'Recipe_Bauxite_Caterium_C' && this.convRecipes.includes('Recipe_Quartz_Bauxite_C')){ continue; }
-                            if(recipeKey === 'Recipe_Bauxite_Caterium_C' && this.convRecipes.includes('Recipe_Uranium_Bauxite_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Bauxite_Copper_C' && this.convRecipes.includes('Recipe_Nitrogen_Bauxite_C')){ continue; }
-                            if(recipeKey === 'Recipe_Bauxite_Copper_C' && this.convRecipes.includes('Recipe_Quartz_Bauxite_C')){ continue; }
-                            if(recipeKey === 'Recipe_Bauxite_Copper_C' && this.convRecipes.includes('Recipe_Uranium_Bauxite_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Caterium_Copper_C' && this.convRecipes.includes('Recipe_Bauxite_Caterium_C')){ continue; }
-                            if(recipeKey === 'Recipe_Caterium_Copper_C' && this.convRecipes.includes('Recipe_Nitrogen_Caterium_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Caterium_Quartz_C' && this.convRecipes.includes('Recipe_Bauxite_Caterium_C')){ continue; }
-                            if(recipeKey === 'Recipe_Caterium_Quartz_C' && this.convRecipes.includes('Recipe_Nitrogen_Caterium_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Coal_Iron_C' && this.convRecipes.includes('Recipe_Quartz_Coal_C')){ continue; }
-                            if(recipeKey === 'Recipe_Coal_Iron_C' && this.convRecipes.includes('Recipe_Sulfur_Coal_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Coal_Limestone_C' && this.convRecipes.includes('Recipe_Quartz_Coal_C')){ continue; }
-                            if(recipeKey === 'Recipe_Coal_Limestone_C' && this.convRecipes.includes('Recipe_Sulfur_Coal_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Copper_Quartz_C' && this.convRecipes.includes('Recipe_Bauxite_Copper_C')){ continue; }
-                            if(recipeKey === 'Recipe_Copper_Quartz_C' && this.convRecipes.includes('Recipe_Caterium_Copper_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Copper_Sulfur_C' && this.convRecipes.includes('Recipe_Bauxite_Copper_C')){ continue; }
-                            if(recipeKey === 'Recipe_Copper_Sulfur_C' && this.convRecipes.includes('Recipe_Caterium_Copper_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Iron_Limestone_C' && this.convRecipes.includes('Recipe_Limestone_Sulfur_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Limestone_Sulfur_C' && this.convRecipes.includes('Recipe_Coal_Limestone_C')){ continue; }
-                            if(recipeKey === 'Recipe_Limestone_Sulfur_C' && this.convRecipes.includes('Recipe_Iron_Limestone_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Quartz_Bauxite_C' && this.convRecipes.includes('Recipe_Caterium_Quartz_C')){ continue; }
-                            if(recipeKey === 'Recipe_Quartz_Bauxite_C' && this.convRecipes.includes('Recipe_Copper_Quartz_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Quartz_Coal_C' && this.convRecipes.includes('Recipe_Caterium_Quartz_C')){ continue; }
-                            if(recipeKey === 'Recipe_Quartz_Coal_C' && this.convRecipes.includes('Recipe_Copper_Quartz_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Sulfur_Coal_C' && this.convRecipes.includes('Recipe_Copper_Sulfur_C')){ continue; }
-                            if(recipeKey === 'Recipe_Sulfur_Coal_C' && this.convRecipes.includes('Recipe_Limestone_Sulfur_C')){ continue; }
-
-                            if(recipeKey === 'Recipe_Sulfur_Iron_C' && this.convRecipes.includes('Recipe_Copper_Sulfur_C')){ continue; }
-                            if(recipeKey === 'Recipe_Sulfur_Iron_C' && this.convRecipes.includes('Recipe_Limestone_Sulfur_C')){ continue; }
-
-                            return recipeKey;
-                        }
-                    }
-            }
-
-            for(let recipeKey in this.recipes)
-            {
-                if(ignoredRecipes.includes(recipeKey)){ continue; }
-
-                if(this.isAlternateRecipe(this.recipes[recipeKey]) === false)
-                {
-                    if(this.recipes[recipeKey].produce !== undefined)
-                    {
-                        if(this.recipes[recipeKey].produce[currentItemClassName] !== undefined)
-                        {
-                            availableRecipes.push(recipeKey);
-                        }
-                    }
-                }
-            }
-
-            if(availableRecipes.length === 0)
-            {
-                // Forcing enabling alternate recipe...
-                if(itemId === 'Desc_DissolvedSilica_C')
-                {
-                    this.postMessage({type: 'addAlternateRecipe', recipeId: 'Recipe_Alternate_Quartz_Purified_C'});
-                    availableRecipes.push('Recipe_Alternate_Quartz_Purified_C');
-                }
-            }
-
-            if(availableRecipes.length > 0)
-            {
-                // Order by produce length
-                availableRecipes.sort(function(a, b){
-                    let aLength = Object.keys(this.recipes[a].produce).length;
-                    let bLength = Object.keys(this.recipes[b].produce).length;
-
-                        if(aLength === bLength)
-                        {
-                            if(this.isAlternateRecipe(this.recipes[a]) === true && this.isAlternateRecipe(this.recipes[b]) === false)
-                            {
-                                return 1;
-                            }
-                            if(this.isAlternateRecipe(this.recipes[a]) === false && this.isAlternateRecipe(this.recipes[b]) === true)
-                            {
-                                return -1;
-                            }
-
-                            let produceA = null;
-                            let produceB = null;
-
-                                for(let item in this.recipes[a].produce)
-                                {
-                                    if(item === itemId)
-                                    {
-                                        produceA = (60 / this.recipes[a].mManufactoringDuration * this.recipes[a].produce[item]);
-                                        break;
-                                    }
-                                }
-                                for(let item in this.recipes[b].produce)
-                                {
-                                    if(item === itemId)
-                                    {
-                                        produceB = (60 / this.recipes[b].mManufactoringDuration * this.recipes[b].produce[item]);
-                                        break;
-                                    }
-                                }
-
-                            if(produceA !== null && produceB !== null)
-                            {
-                                if(produceA !== produceB)
-                                {
-                                    return produceB - produceA;
-                                }
-                            }
-
-                            // Use Rubber instead of Plastic
-                            if(itemId === 'Desc_HeavyOilResidue_C' && a === 'Recipe_Rubber_C' && b === 'Recipe_Plastic_C')
-                            {
-                                return -1;
-                            }
-                            if(itemId === 'Desc_HeavyOilResidue_C' && a === 'Recipe_Plastic_C' && b === 'Recipe_Rubber_C')
-                            {
-                                return 1;
-                            }
-
-                            //TODO: Add power/items sorting?
-                            //TODO: Fix Firefox sorting in reverse order?
-                            return this.recipes[a].className.localeCompare(this.recipes[b].className);
-                        }
-
-                    return aLength - bLength;
-                }.bind(this));
-
-                return availableRecipes[0];
-            }
-
-        return null;
-    }
-
-    getProductionBuildingFromRecipeId(recipeId)
-    {
-        // Find suitable building
-        if(this.recipes[recipeId].mProducedIn !== undefined)
-        {
-            for(let i = this.recipes[recipeId].mProducedIn.length - 1; i >= 0; i--)
-            {
-                let currentBuilding = this.recipes[recipeId].mProducedIn[i];
-                    if(currentBuilding === '/Game/FactoryGame/Buildable/-Shared/WorkBench/BP_WorkshopComponent.BP_WorkshopComponent_C' && this.recipes[recipeId].mProducedIn.length === 1)
-                    {
-                        return 'Build_Workshop_C';
-                    }
-
-                    for(let buildingKey in this.buildings)
-                    {
-                        if(this.buildings[buildingKey].className === currentBuilding)
-                        {
-                            if(recipeId === 'Recipe_CrudeOil_C' && this.options.oilType === 'Build_OilPump_C' && buildingKey !== 'Build_OilPump_C')
-                            {
-                                continue;
-                            }
-                            if(recipeId === 'Recipe_CrudeWater_C' && this.options.waterType === 'Build_WaterPump_C' && buildingKey !== 'Build_WaterPump_C')
-                            {
-                                continue;
-                            }
-
-                            return buildingKey;
-                        }
-                    }
-            }
-        }
-
-        return null;
-    }
-
-
     /**
      * TREE LIST
      */
@@ -728,6 +478,11 @@ export default class Worker_Wrapper
     {
         this.postMessage({type: 'updateLoaderText', text: 'Generating production list...'});
         let  html = [];
+            if(this.notice !== null)
+            {
+                html.push('<p class="p-3 text-center text-warning">' + this.notice + '</p>');
+            }
+
             if(this.requestedItems.length === 0)
             {
                 html.push('<p class="p-3 text-center">Please select at least one item in the production list.</p>');

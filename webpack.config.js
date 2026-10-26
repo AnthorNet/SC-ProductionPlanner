@@ -13,12 +13,17 @@ module.exports = env => {
         performance     : { hints: false },
         context         : path.resolve(__dirname, 'src'),
         entry           : {
-            SCPP            : './SCPP.js'
+            SCPP            : './SCPP.js',
+
+            // Workers: separate entries, loaded by SCPP.createWorker() (same-origin blob + importScripts)
+            'SCPP-Simple'   : './Worker/Simple.js',
+            'SCPP-Realistic': './Worker/Realistic.js'
         },
 
         output          : {
             path            : path.resolve(__dirname, 'build'),
-            filename        : './[name].js'
+            filename        : './[name].js',
+            clean           : true
         },
         optimization    : {
             minimize        : true,

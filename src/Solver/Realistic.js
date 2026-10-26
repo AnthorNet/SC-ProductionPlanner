@@ -1,6 +1,8 @@
 /* global Intl */
 
-import Worker_Wrapper   from '../Worker/Wrapper.js';
+import Worker_Wrapper       from '../Worker/Wrapper.js';
+import { prepareGameData, AMPLIFIER_SLOTS } from '../LinearProgram/GameData.js';
+import { solveProduction }  from '../LinearProgram/Solver.js';
 
 export default class Solver_Realistic extends Worker_Wrapper
 {
@@ -8,7 +10,10 @@ export default class Solver_Realistic extends Worker_Wrapper
     {
         super(worker);
 
-        this.options        = {
+        this.treePath       = new Set();
+
+        // Keep Worker_Wrapper defaults (belt speeds, extraction) and add the Realistic options
+        Object.assign(this.options, {
             useManifolds                : 1,
             mergeBuildings              : 1,
             maxLevel                    : null,
@@ -19,7 +24,7 @@ export default class Solver_Realistic extends Worker_Wrapper
             allowMinerOverclocking      : true,
             allowPumpOverclocking       : true,
             allowBuildingOverclocking   : true
-        };
+        });
     }
 
     // Worker only receive main thread initial options
@@ -80,17 +85,6 @@ export default class Solver_Realistic extends Worker_Wrapper
                     this.options.oreType    = oreOptions[0];
                     this.options.oreSpeed   = oreOptions[1];
                 }
-
-            if(this.options.oreType === 'Build_MinerMk1_C')
-            {
-                delete this.buildings.Build_MinerMk3_C;
-                delete this.buildings.Build_MinerMk2_C;
-            }
-
-            if(this.options.oreType === 'Build_MinerMk2_C')
-            {
-                delete this.buildings.Build_MinerMk3_C;
-            }
 
             if(this.options.oreType !== 'Build_MinerMk2_C' || this.options.oreSpeed !== 'RP_Normal')
             {
@@ -174,382 +168,70 @@ export default class Solver_Realistic extends Worker_Wrapper
     startCalculation()
     {
         super.startCalculation();
-        this.doCalculation();
+
+        // false: the "Maximize" button only wanted the quantities, the form runs again with them
+        if(this.doCalculation() === false)
+        {
+            return this.postMessage({type: 'done'});
+        }
+
         this.endCalculation();
     }
 
     doCalculation()
     {
-        // Parse required items!
-        for(let i = 0; i < this.requestedItems.length; i++)
+        this.postMessage({type: 'updateLoaderText', text: 'Solving production plan...'});
+
+        const game      = prepareGameData({ buildings: this.buildings, items: this.items, recipes: this.recipes });
+        const request   = {
+            ...this.solverRequest({
+                ore     : { building: this.options.oreType,     purity: this.options.oreSpeed },
+                oil     : { building: this.options.oilType,     purity: this.options.oilSpeed },
+                water   : { building: this.options.waterType,   purity: this.options.waterSpeed },
+                gas     : { building: this.options.gasType,     purity: this.options.gasSpeed }
+            }),
+            somersloops : this.options.availableSomerSloops,
+            maxRates    : { solid: this.options.maxBeltSpeed, fluid: this.options.maxPipeSpeed / 1000 }
+        };
+
+        let plan = solveProduction(game, request);
+
+        /*
+         * With maxLevel, somersloops only make sense on what is kept: if the plan amplified recipes
+         * that sit beyond the limit, solve again allowing only the recipes within it.
+         */
+        if(plan.status === 'optimal' && this.options.maxLevel !== null && plan.somersloops.used > 0)
         {
-            let requestedQty = this.requestedItems[i].qty;
-            let maxMergedQty = this.options.maxBeltSpeed;
+            const depths    = this.recipeDepths(plan.flows);
+            const kept      = (recipeId) => (depths.get('recipe:' + recipeId) ?? Infinity) <= this.options.maxLevel - 1;
 
-                if(this.items[this.requestedItems[i].id].category === 'liquid' || this.items[this.requestedItems[i].id].category === 'gas')
+                if(plan.recipes.some(recipe => recipe.somersloops > 0 && kept(recipe.id) === false))
                 {
-                    requestedQty *= 1000;
-                    maxMergedQty = this.options.maxPipeSpeed;
+                    plan = solveProduction(game, { ...request, amplifiable: plan.recipes.filter(recipe => kept(recipe.id)).map(recipe => recipe.id) });
                 }
-
-            while(requestedQty >= maxMergedQty)
-            {
-                this.startMainNode(this.requestedItems[i].id, ((this.items[this.requestedItems[i].id].category === 'liquid' || this.items[this.requestedItems[i].id].category === 'gas') ? (maxMergedQty / 1000) : maxMergedQty));
-                requestedQty -= maxMergedQty;
-            }
-
-            if(requestedQty > 0)
-            {
-                this.startMainNode(this.requestedItems[i].id, ((this.items[this.requestedItems[i].id].category === 'liquid' || this.items[this.requestedItems[i].id].category === 'gas') ? (requestedQty / 1000) : requestedQty));
-            }
         }
 
-        // Merge nodes when possible!
-        if(this.options.mergeBuildings === 1)
+        switch(this.sendMaximizedQuantities(plan))
         {
-            this.postMessage({type: 'updateLoaderText', text: 'Improving buildings efficiency...'});
-
-            // Loop backwards so the miners/pumps are overclocked before the production buildings ;)
-            for(let pass = 1; pass <= 2; pass++)
-            {
-                for(let i = this.graphNodes.length - 1; i >= 0 ; i--)
-                {
-                    for(let j = this.graphNodes.length - 1; j >= 0 ; j--)
-                    {
-                        if(i !== j && this.graphNodes[i] !== undefined && this.graphNodes[j] !== undefined) // Not yet tested...
-                        {
-                            let mergingNodeData = this.graphNodes[i].data;
-                            let sourceNodeData  = this.graphNodes[j].data;
-
-                            if(
-                                   mergingNodeData.nodeType === 'productionBuilding' && mergingNodeData.nodeType === sourceNodeData.nodeType && mergingNodeData.id !== sourceNodeData.id
-                                // Both nodes needs to have the same recipe ^^
-                                && mergingNodeData.recipe === sourceNodeData.recipe
-                                && sourceNodeData.clockSpeed === 100 // Not touched yet!
-                            )
-                            {
-                                // Can we apply some overclocking?
-                                if(this.options.mergeBuildings === 1 && this.options.availablePowerShards > 0 && (mergingNodeData.qtyUsed + sourceNodeData.qtyUsed) > mergingNodeData.qtyProduced && mergingNodeData.clockSpeed < 250)
-                                {
-                                    let allowSourceNodeOverclocking = false;
-                                        if(mergingNodeData.buildingType.startsWith('Build_MinerMk') && this.options.allowMinerOverclocking === true)
-                                        {
-                                            allowSourceNodeOverclocking = true;
-                                        }
-                                        if(mergingNodeData.buildingType.startsWith('Build_OilPump') && this.options.allowPumpOverclocking === true)
-                                        {
-                                            allowSourceNodeOverclocking = true;
-                                        }
-                                        if(mergingNodeData.buildingType.startsWith('Build_MinerMk') === false && mergingNodeData.buildingType.startsWith('Build_OilPump') === false && this.options.allowBuildingOverclocking === true)
-                                        {
-                                            allowSourceNodeOverclocking = true;
-                                        }
-
-                                        if(allowSourceNodeOverclocking === true)
-                                        {
-                                            while(this.options.availablePowerShards > 0 && (mergingNodeData.qtyUsed + sourceNodeData.qtyUsed) > mergingNodeData.qtyProduced && mergingNodeData.clockSpeed < 250)
-                                            {
-                                                this.options.availablePowerShards--;
-                                                mergingNodeData.clockSpeed += 50;
-
-                                                mergingNodeData.qtyProduced = mergingNodeData.qtyProducedDefault * mergingNodeData.clockSpeed / 100;
-                                            }
-                                        }
-                                }
-
-                                if(mergingNodeData.qtyUsed < mergingNodeData.qtyProducedDefault)
-                                {
-                                    let maxMergedQty        = mergingNodeData.qtyUsed + sourceNodeData.qtyUsed;
-                                    let mergedPercentage    = 100;
-                                    let maxBeltSpeed        = this.options.maxBeltSpeed;
-                                        if(mergingNodeData.buildingType === 'Build_OilPump_C' || mergingNodeData.buildingType === 'Build_WaterPump_C' || mergingNodeData.buildingType === 'Build_FrackingExtractor_C')
-                                        {
-                                            maxBeltSpeed = this.options.maxPipeSpeed;
-                                        }
-                                        if(this.items[mergingNodeData.itemOut].category === 'liquid' || this.items[mergingNodeData.itemOut].category === 'gas')
-                                        {
-                                            maxBeltSpeed = this.options.maxPipeSpeed;
-                                        }
-                                    let mergedQty       = Math.min(maxMergedQty, mergingNodeData.qtyProduced, maxBeltSpeed);
-                                        if(mergedQty < maxMergedQty)
-                                        {
-                                            mergedPercentage = (mergedQty - mergingNodeData.qtyUsed) / (maxMergedQty - mergingNodeData.qtyUsed) * 100;
-                                        }
-
-                                    if((mergedQty <= mergingNodeData.qtyProduced && mergedQty <= maxBeltSpeed))
-                                    {
-                                        // Tests if input/output are allowed to that new speed...
-                                        let canMergeInputs  = this.testEdgesMaxSpeeds(mergingNodeData, sourceNodeData, mergedPercentage);
-                                            if(canMergeInputs === true && mergedPercentage === 100)
-                                            {
-                                                // Update edges!
-                                                let productionBoostedRemoved = 0;
-                                                    for(let k = 0; k < this.graphEdges.length; k++)
-                                                    {
-                                                        if(this.graphEdges[k] !== undefined)
-                                                        {
-                                                            if(this.graphEdges[k].data.source === sourceNodeData.id)
-                                                            {
-                                                                this.graphEdges[k].data.source = mergingNodeData.id;
-                                                            }
-                                                            if(this.graphEdges[k].data.target === sourceNodeData.id)
-                                                            {
-                                                                if(mergingNodeData.isProductionBoosted !== undefined && productionBoostedRemoved < mergingNodeData.isProductionBoosted)
-                                                                {
-                                                                    productionBoostedRemoved++;
-                                                                    delete this.graphEdges[k];
-                                                                }
-                                                                else
-                                                                {
-                                                                    this.graphEdges[k].data.target = mergingNodeData.id;
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-
-                                                delete this.graphNodes[j];
-
-                                                mergingNodeData.qtyUsed     = mergedQty;
-                                            }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Update previous merged edges...
-                for(let i = 0; i < this.graphEdges.length; i++)
-                {
-                    for(let j = 0; j < this.graphEdges.length; j++)
-                    {
-                        if(i !== j && this.graphEdges[i] !== undefined && this.graphEdges[j] !== undefined) // Not yet tested...
-                        {
-                            if(this.graphEdges[i].data.source === this.graphEdges[j].data.source && this.graphEdges[i].data.target === this.graphEdges[j].data.target)
-                            {
-                                this.graphEdges[i].data.qty += this.graphEdges[j].data.qty;
-                                delete this.graphEdges[j];
-                            }
-                        }
-                    }
-                }
-            }
+            case 'stop':
+                return false;               // The form runs again with the maximized quantities
+            case 'retry':
+                return this.doCalculation();   // Nothing to maximize: requested quantities as usual
         }
+        if(plan.status !== 'optimal')
+        {
+            this.showNotice(plan.message);
+            return;
+        }
+
+        const flows = (this.options.maxLevel !== null) ? this.cutAtMaxLevel(plan, plan.flows) : plan.flows;
+
+        this.postMessage({type: 'updateLoaderText', text: 'Generating buildings layout...'});
+        this.buildPhysicalGraph(game, plan, flows);
 
         if(this.options.useManifolds === 1)
         {
-            this.postMessage({type: 'updateLoaderText', text: 'Building manifolds...'});
-
-            // Add merger
-            let mergers     = [];
-            let mergerKey   = 0;
-
-            for(let i = this.graphEdges.length - 1; i >= 0 ; i--)
-            {
-                if(this.graphEdges[i] === undefined)
-                {
-                    continue;
-                }
-
-                let parentEdge      = this.graphEdges[i];
-                let currentMerger   = [];
-                let mergerQty       = 0;
-                let maxMergedQty    = this.options.maxBeltSpeed;
-
-                    if(this.items[parentEdge.data.itemId].category === 'liquid' || this.items[parentEdge.data.itemId].category === 'gas')
-                    {
-                        maxMergedQty = this.options.maxPipeSpeed;
-                    }
-
-                for(let j = this.graphEdges.length - 1; j >= 0 ; j--)
-                {
-                    if(this.graphEdges[j] === undefined)
-                    {
-                        continue;
-                    }
-
-                    if(parentEdge.data.id !== this.graphEdges[j].data.id) // Not yet tested...
-                    {
-                        if(parentEdge.data.itemId === this.graphEdges[j].data.itemId && parentEdge.data.target === this.graphEdges[j].data.target)
-                        {
-                            if((mergerQty + this.graphEdges[j].data.qty) <= maxMergedQty)
-                            {
-                                if(this.graphEdges[j].data.qty >= 0.1)
-                                {
-                                    mergerQty += this.graphEdges[j].data.qty;
-                                    currentMerger.push(this.graphEdges[j]);
-                                }
-
-                                delete this.graphEdges[j];
-                            }
-                        }
-                    }
-                }
-
-                if(currentMerger.length > 0)
-                {
-                    if(parentEdge.data.qty >= 0.1)
-                    {
-                        mergerQty += parentEdge.data.qty;
-                        currentMerger.push(parentEdge);
-
-                        mergers.push({
-                            origin: parentEdge,
-                            mergerSources: currentMerger,
-                            mergerQty: mergerQty
-                        });
-                    }
-
-                    delete this.graphEdges[i];
-                }
-            }
-
-            if(mergers.length > 0)
-            {
-                for(let i = 0; i < mergers.length; i++)
-                {
-                    mergerKey++;
-
-                    let currentMergerTarget         = mergers[i].origin.data.target;
-                    let currentMergerId             = 'merger_' + mergerKey;
-                    let currentMergerTargetQty      = mergers[i].mergerQty;
-
-                    for(let k = 0; k < mergers[i].mergerSources.length; k++)
-                    {
-                        if(k % 2 === 0)
-                        {
-                            if((k + 1) < mergers[i].mergerSources.length) // Prevent solo merger ^^
-                            {
-                                if(k > 0)
-                                {
-                                    mergerKey++;
-                                    currentMergerTarget         = currentMergerId;
-                                    currentMergerId             = 'merger_' + mergerKey;
-                                }
-
-                                this.graphNodes.push({data: {
-                                    id          : currentMergerId,
-                                    nodeType    : 'merger',
-                                    itemId      : mergers[i].origin.data.itemId
-                                }});
-
-                                this.graphEdges.push({data: {
-                                    id                  : 'merger_' + mergerKey + '_' + currentMergerTarget,
-                                    source              : currentMergerId,
-                                    target              : currentMergerTarget,
-                                    itemId              : mergers[i].origin.data.itemId,
-                                    useAlternateRecipe  : mergers[i].origin.data.useAlternateRecipe,
-                                    qty                 : currentMergerTargetQty
-                                }});
-                            }
-                        }
-
-                        this.graphEdges.push({data: {
-                            id                  : mergers[i].mergerSources[k].data.source + '_' + currentMergerId,
-                            source              : mergers[i].mergerSources[k].data.source,
-                            target              : currentMergerId,
-                            itemId              : mergers[i].mergerSources[k].data.itemId,
-                            useAlternateRecipe  : mergers[i].mergerSources[k].data.useAlternateRecipe,
-                            qty                 : mergers[i].mergerSources[k].data.qty
-                        }});
-
-                        currentMergerTargetQty -= mergers[i].mergerSources[k].data.qty;
-                    }
-                }
-            }
-
-            // Add splitter
-            let splitters   = [];
-            let splitterKey = 0;
-            for(let i = 0; i < this.graphEdges.length; i++)
-            {
-                let currentSplitter   = [];
-                let splitterQty       = 0;
-
-                for(let j = 0; j < this.graphEdges.length; j++)
-                {
-                    if(i !== j && this.graphEdges[i] !== undefined && this.graphEdges[j] !== undefined) // Not yet tested...
-                    {
-                        if(this.graphEdges[i].data.itemId === this.graphEdges[j].data.itemId && this.graphEdges[i].data.source === this.graphEdges[j].data.source)
-                        {
-                            if(this.graphEdges[j].data.qty >= 0.1)
-                            {
-                                splitterQty += this.graphEdges[j].data.qty;
-                                currentSplitter.push(this.graphEdges[j]);
-                            }
-                            delete this.graphEdges[j];
-                        }
-                    }
-                }
-
-                if(currentSplitter.length > 0)
-                {
-                    if(this.graphEdges[i].data.qty >= 0.1)
-                    {
-                        splitterQty += this.graphEdges[i].data.qty;
-                        currentSplitter.push(this.graphEdges[i]);
-
-                        splitters.push({
-                            origin: this.graphEdges[i],
-                            splitterTargets: currentSplitter,
-                            splitterQty: splitterQty
-                        });
-                    }
-
-                    delete this.graphEdges[i];
-                }
-            }
-
-            if(splitters.length > 0)
-            {
-                for(let i = 0; i < splitters.length; i++)
-                {
-                    splitterKey++;
-
-                    let currentSplitterSource       = splitters[i].origin.data.source;
-                    let currentSplitterId           = 'splitter_' + splitterKey;
-                    let currentSplitterSourceQty    = splitters[i].splitterQty;
-
-                    for(let k = 0; k < splitters[i].splitterTargets.length; k++)
-                    {
-                        if(k % 2 === 0 && k < (splitters[i].splitterTargets.length - 1))
-                        {
-                            if(k > 0)
-                            {
-                                splitterKey++;
-                                currentSplitterSource       = currentSplitterId;
-                                currentSplitterId           = 'splitter_' + splitterKey;
-                            }
-
-                            this.graphNodes.push({data: {
-                                id          : currentSplitterId,
-                                nodeType    : 'splitter',
-                                itemId      : splitters[i].origin.data.itemId
-                            }});
-
-                            this.graphEdges.push({data: {
-                                id                  : currentSplitterSource + '_splitter_' + splitterKey,
-                                source              : currentSplitterSource,
-                                target              : currentSplitterId,
-                                itemId              : splitters[i].origin.data.itemId,
-                                useAlternateRecipe  : splitters[i].origin.data.useAlternateRecipe,
-                                qty                 : currentSplitterSourceQty
-                            }});
-                        }
-
-                        this.graphEdges.push({data: {
-                            id                  : currentSplitterId + '_' + splitters[i].splitterTargets[k].data.target,
-                            source              : currentSplitterId,
-                            target              : splitters[i].splitterTargets[k].data.target,
-                            itemId              : splitters[i].splitterTargets[k].data.itemId,
-                            useAlternateRecipe  : splitters[i].splitterTargets[k].data.useAlternateRecipe,
-                            qty                 : splitters[i].splitterTargets[k].data.qty
-                        }});
-
-                        currentSplitterSourceQty -= splitters[i].splitterTargets[k].data.qty;
-                    }
-                }
-            }
+            this.buildManifolds();
         }
 
         // Remove empty arrays ;)
@@ -557,532 +239,837 @@ export default class Solver_Realistic extends Worker_Wrapper
         this.graphEdges = this.graphEdges.filter(function(element){ return element !== undefined; });
     }
 
-    startMainNode(itemKey, mainRequiredQty)
+    /*
+     * Production steps away from the requested items (shortest path over the plan's flows)
+     */
+    recipeDepths(flows)
     {
-        console.log('startMainNode', itemKey, mainRequiredQty);
-
-        let currentRecipe           = this.getRecipeToProduceItemId(itemKey);
-
-            if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
+        const byTarget = new Map();
+            for(const edge of flows.edges)
             {
-                mainRequiredQty *= 1000;
+                if(byTarget.has(edge.target) === false){ byTarget.set(edge.target, []); }
+                byTarget.get(edge.target).push(edge);
             }
 
-        if(currentRecipe !== null)
+        const depth = new Map();
+        const queue = flows.nodes.filter(node => node.type === 'output').map(node => node.id);
+            queue.forEach(id => depth.set(id, 0));
+
+            while(queue.length > 0)
+            {
+                const id = queue.shift();
+
+                for(const edge of byTarget.get(id) ?? [])
+                {
+                    if(edge.source.startsWith('recipe:') && depth.has(edge.source) === false)
+                    {
+                        depth.set(edge.source, depth.get(id) + 1);
+                        queue.push(edge.source);
+                    }
+                }
+            }
+
+        return depth;
+    }
+
+    /*
+     * maxLevel, with the same meaning as the legacy tree: a production step is cut when it sits
+     * maxLevel levels away from a requested item *along the path that needs it*. Demand is pushed
+     * from the requested items level by level over the plan's flows; by-products already made are
+     * used before running a machine further. What lies beyond the limit becomes a "last node"
+     * item, while raw resources keep their extractors.
+     *
+     * When a recipe is only partly kept, its amplified machines (somersloops) run first: they make
+     * more for the same inputs, so the demand pushed upstream follows that split.
+     */
+    cutAtMaxLevel(plan, flows)
+    {
+        const keptLevels = this.options.maxLevel - 1;
+            if(keptLevels < 1)
+            {
+                return flows;
+            }
+
+        const EPSILON   = 1e-9;
+        const isRecipe  = (id) => id.startsWith('recipe:');
+
+        /*
+         * Each recipe as two parts, amplified then base. `share` u goes from 0 to 1 over the plan's
+         * activity: the amplified part covers [0, α], the base part [α, 1], α being the amplified
+         * share of the outputs. net(u) gives the net items made (> 0) or used (< 0) up to u.
+         */
+        const parts     = new Map(), incoming = new Map();
+            for(const recipe of plan.recipes)
+            {
+                const amplifiedMachines = recipe.amplified.reduce((total, a) => total + a.machines, 0);
+                const amplifiedOutput   = recipe.amplified.reduce((total, a) => total + a.machines * a.factor, 0);
+                const baseMachines      = Math.max(0, recipe.machines - amplifiedMachines);
+                const totalOutput       = baseMachines + amplifiedOutput;
+
+                const ratesIn   = new Map(recipe.inputs.map(({ item, qty }) => [item, qty / recipe.machines]));
+                const ratesOut  = new Map(recipe.outputs.map(({ item, qty }) => [item, qty / totalOutput]));
+                const net       = (machines, output) => {
+                    const values = new Map();
+                        ratesOut.forEach((rate, item) => values.set(item, (values.get(item) ?? 0) + rate * output));
+                        ratesIn.forEach((rate, item) => values.set(item, (values.get(item) ?? 0) - rate * machines));
+                    return values;
+                };
+
+                parts.set('recipe:' + recipe.id, {
+                    alpha       : totalOutput > 0 ? amplifiedOutput / totalOutput : 0,
+                    amplified   : net(amplifiedMachines, amplifiedOutput),
+                    base        : net(baseMachines, baseMachines)
+                });
+            }
+            for(const edge of flows.edges)
+            {
+                const key = edge.target + '|' + edge.item;
+                    if(incoming.has(key) === false){ incoming.set(key, []); }
+                    incoming.get(key).push(edge);
+            }
+
+        // Net quantity of `item` up to share u (beyond 1 the last part keeps its rate, loops may ask for it)
+        const netAt = (part, item, u) => {
+            const a = part.amplified.get(item) ?? 0, b = part.base.get(item) ?? 0;
+
+                if(part.alpha >= 1 - EPSILON){ return a * u; }
+                if(part.alpha <= EPSILON){ return b * u; }
+                if(u <= part.alpha){ return a * u / part.alpha; }
+
+            return a + b * (u - part.alpha) / (1 - part.alpha);
+        };
+
+        // Smallest share making `target` of `item` (net production grows with u)
+        const shareFor = (part, item, target) => {
+            let low = 0, high = 1;
+                while(netAt(part, item, high) < target - EPSILON){ high *= 2; }
+
+            for(let i = 0; i < 60; i++)
+            {
+                const mid = (low + high) / 2;
+                    if(netAt(part, item, mid) >= target){ high = mid; }else{ low = mid; }
+            }
+
+            return high;
+        };
+
+        const share     = new Map();   // recipe → kept share u
+        const delivered = new Map();   // recipe|item → already promised
+        const edges     = new Map();
+        const queue     = [];
+
+        const addEdge = (source, target, item, qty) => {
+            const key = source + '>' + target + '#' + item;
+                if(edges.has(key) === false){ edges.set(key, { id: key, source, target, item, qty: 0 }); }
+                edges.get(key).qty += qty;
+        };
+
+        // `source` must deliver `qty` of `item` to `target`, standing `level` steps from the outputs
+        const demand = (source, target, item, qty, level) => {
+            if(isRecipe(source) === false)
+            {
+                addEdge(source, target, item, qty);     // extraction, provided input, missing item
+                return;
+            }
+            if(level > keptLevels)
+            {
+                addEdge('lastNode:' + item, target, item, qty);
+                return;
+            }
+
+            const part      = parts.get(source);
+            const current   = share.get(source) ?? 0;
+            const promised  = (delivered.get(source + '|' + item) ?? 0) + qty;
+
+                if(netAt(part, item, current) < promised - EPSILON)
+                {
+                    const next = shareFor(part, item, promised);
+
+                    share.set(source, next);
+                    queue.push({ recipe: source, from: current, to: next, level });
+                }
+
+            delivered.set(source + '|' + item, promised);
+            addEdge(source, target, item, qty);
+        };
+
+        for(const edge of flows.edges)
         {
-            if(this.items[itemKey].category === 'liquid' || this.items[itemKey].category === 'gas')
+            if(edge.target.startsWith('output:'))
             {
-                this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.language).format(mainRequiredQty / 1000) + 'm³ ' + this.items[itemKey].name + '...'});
+                demand(edge.source, edge.target, edge.item, edge.qty, 1);
             }
-            else
+        }
+
+        while(queue.length > 0)
+        {
+            const { recipe, from, to, level } = queue.shift();
+            const part = parts.get(recipe);
+
+            for(const item of new Set([...part.amplified.keys(), ...part.base.keys()]))
             {
-                this.postMessage({type: 'updateLoaderText', text: 'Calculating production of ' + new Intl.NumberFormat(this.language).format(mainRequiredQty) + ' ' + this.items[itemKey].name + '...'});
-            }
+                const needed = netAt(part, item, from) - netAt(part, item, to);    // consumption grows: net goes down
+                    if(needed <= EPSILON){ continue; }
 
-            let mainNodeVisId  = itemKey + '_' + this.nodeIdKey;
-                this.nodeIdKey++;
+                const sources   = incoming.get(recipe + '|' + item) ?? [];
+                const supplied  = sources.reduce((sum, edge) => sum + edge.qty, 0);
 
-            this.graphNodes.push({data: {
-                id          : mainNodeVisId,
-                nodeType    : 'mainNode',
-                itemId      : itemKey,
-                qty         : mainRequiredQty,
-                image       : this.items[itemKey].image
-            }});
-
-            // Build tree...
-            while(mainRequiredQty > 0)
-            {
-                let usesByProduct = false;
-
-                // Can we use by product?
-                for(let i = 0; i < this.graphNodes.length; i ++)
+                for(const edge of sources)
                 {
-                    if(this.graphNodes[i].data.nodeType === 'byProductItem')
-                    {
-                        if(this.graphNodes[i].data.itemId === itemKey)
-                        {
-                            let remainingQty    = this.graphNodes[i].data.qtyProduced - this.graphNodes[i].data.qtyUsed;
-                            let useQty          = Math.min(remainingQty, mainRequiredQty);
-                                if(useQty < 0)
-                                {
-                                    useQty = remainingQty;
-                                }
-
-                            if(remainingQty > 0 && useQty > 0)
-                            {
-                                // Add edge between byProduct and item..
-                                this.graphEdges.push({data: {
-                                    id                  : this.graphNodes[i].data.id + '_' + mainNodeVisId,
-                                    source              : this.graphNodes[i].data.id,
-                                    target              : mainNodeVisId,
-                                    itemId              : itemKey,
-                                    qty                 : useQty
-                                }});
-
-                                this.graphNodes[i].data.qtyUsed    += useQty;
-                                mainRequiredQty                    -= useQty;
-                                usesByProduct                       = true;
-                            }
-                        }
-                    }
+                    demand(edge.source, recipe, item, needed * edge.qty / supplied, level + 1);
                 }
+            }
+        }
 
-                if(usesByProduct === false)
+        // By-products made but not needed by the kept part of the tree are left over
+        for(const [recipe, kept] of share)
+        {
+            const part = parts.get(recipe);
+
+            for(const item of new Set([...part.amplified.keys(), ...part.base.keys()]))
+            {
+                const excess = netAt(part, item, kept) - (delivered.get(recipe + '|' + item) ?? 0);
+                    if(excess > EPSILON){ addEdge(recipe, 'surplus:' + item, item, excess); }
+            }
+        }
+
+        // Rebuild the nodes: recipes with the share kept of each part, endpoints sized by their edges
+        const nodes     = [];
+        const endpoints = new Map();
+            for(const node of flows.nodes)
+            {
+                if(node.type === 'recipe' && share.has(node.id))
                 {
-                    // Regular node...
-                    let qtyProducedByNode = this.buildCurrentNodeTree({
-                        id              : itemKey,
-                        recipe          : currentRecipe,
-                        qty             : mainRequiredQty,
-                        visId           : mainNodeVisId,
-                        level           : 1
+                    const { alpha } = parts.get(node.id);
+                    const u         = share.get(node.id);
+
+                    nodes.push({
+                        ...node,
+                        amplifiedShare  : (alpha <= EPSILON) ? 0 : ((alpha >= 1 - EPSILON) ? u : Math.min(u, alpha) / alpha),
+                        baseShare       : (alpha >= 1 - EPSILON) ? 0 : ((alpha <= EPSILON) ? u : Math.max(0, u - alpha) / (1 - alpha))
                     });
-
-                    if(qtyProducedByNode !== false)
-                    {
-                        // Reduce needed quantity
-                        mainRequiredQty     -= qtyProducedByNode;
-                    }
-                    else
-                    {
-                        break; //Prevent infinite loop (Kind of :D)...
-                    }
                 }
             }
+            for(const edge of edges.values())
+            {
+                for(const id of [edge.source, edge.target])
+                {
+                    if(isRecipe(id) || endpoints.has(id)){ continue; }
+
+                    const [type, ...rest] = id.split(':');
+                        endpoints.set(id, { id, type, item: rest.join(':'), qty: 0 });
+                }
+
+                if(endpoints.has(edge.source)){ endpoints.get(edge.source).qty += edge.qty; }
+                if(endpoints.has(edge.target)){ endpoints.get(edge.target).qty += edge.qty; }
+            }
+
+        return { nodes: [...nodes, ...endpoints.values()], edges: [...edges.values()] };
+    }
+
+    /*
+     * Turns the plan into physical buildings: each recipe runs on full machines plus one partial,
+     * capped so no input or output exceeds a belt / pipe. Amplified machines (somersloops) chosen by
+     * the LP become buildings holding their somersloops; power shards are then spent where they
+     * remove the most buildings. Requested items and inputs are split per belt like before, and
+     * machines are wired following the plan's flows.
+     */
+    buildPhysicalGraph(game, plan, flows)
+    {
+        const EPSILON   = 1e-6;
+        const isFluid   = (itemId) => game.items[itemId]?.fluid === true;
+        const internal  = (itemId, qty) => isFluid(itemId) ? qty * 1000 : qty;
+        const beltMax   = (itemId) => isFluid(itemId) ? this.options.maxPipeSpeed : this.options.maxBeltSpeed;
+
+        const recipes   = new Map(plan.recipes.map(recipe => [recipe.id, recipe]));
+        const resources = new Map(plan.resources.map(resource => [resource.item, resource]));
+        const physical  = new Map();   // flow node id → [{ id, out: Map, in: Map }]
+
+        const addPhysical = (flowId, unit) => {
+            if(physical.has(flowId) === false){ physical.set(flowId, []); }
+            physical.get(flowId).push(unit);
+        };
+
+        // Split a quantity into machines running at `cap` (fraction of 100%), the last one partial
+        const machineClocks = (machines, cap) => {
+            if(machines <= EPSILON){ return []; }
+
+            const count     = Math.max(1, Math.ceil(machines / cap - EPSILON));
+            const clocks    = new Array(count).fill(cap);
+                clocks[count - 1] = machines - cap * (count - 1);
+
+            return clocks.filter(clock => clock > EPSILON);
+        };
+
+        // Split a quantity per belt, like the legacy requested items / inputs
+        const beltChunks = (itemId, qty) => {
+            const chunks = [];
+                while(qty >= beltMax(itemId) - EPSILON)
+                {
+                    chunks.push(beltMax(itemId));
+                    qty -= beltMax(itemId);
+                }
+                if(qty > EPSILON){ chunks.push(qty); }
+
+            return chunks;
+        };
+
+        // Net internal rates for one machine at 100% (an item both used and made counts once)
+        const netRates = (data, factor) => {
+            const net = new Map();
+                data.products.forEach(({ item, rate }) => net.set(item, (net.get(item) ?? 0) + internal(item, rate) * factor));
+                data.ingredients.forEach(({ item, rate }) => net.set(item, (net.get(item) ?? 0) - internal(item, rate)));
+
+            return net;
+        };
+
+        // Highest clock (1 = 100%) before one input or output of a single machine exceeds a belt / pipe
+        const beltClock = (net) => {
+            let clock = Infinity;
+                for(const [itemId, rate] of net)
+                {
+                    if(rate !== 0){ clock = Math.min(clock, beltMax(itemId) / Math.abs(rate)); }
+                }
+
+            return clock;
+        };
+
+        const pushBuilding = (flowId, group, clock, net, extra = {}) => {
+            const id = group.building + '_' + (this.nodeIdKey++);
+            const data = {
+                id                  : id,
+                nodeType            : 'productionBuilding',
+                buildingType        : group.building,
+                recipe              : group.recipeId,
+                itemOut             : group.itemOut,
+                qtyProducedDefault  : group.rateOut,
+                qtyProduced         : group.rateOut * (extra.clockSpeed ?? 100) / 100,
+                qtyUsed             : group.rateOut * clock,
+                clockSpeed          : extra.clockSpeed ?? 100,
+                image               : this.buildings[group.building].image
+            };
+
+                if(extra.somersloops !== undefined)
+                {
+                    data.isProductionBoosted    = extra.somersloops;
+                    data.qtyProducedBeforeBoost = group.rateOut;
+                    data.qtyProduced            = group.rateOut * extra.factor;
+                }
+
+            this.graphNodes.push({ data });
+
+            const unit = { id, out: new Map(), in: new Map() };
+                for(const [itemId, rate] of net)
+                {
+                    if(rate > 0){ unit.out.set(itemId, rate * clock); }
+                    if(rate < 0){ unit.in.set(itemId, -rate * clock); }
+                }
+
+            addPhysical(flowId, unit);
+        };
+
+        const pushItem = (flowId, nodeType, itemId, qty, side) => {
+            const id    = itemId + '_' + (this.nodeIdKey++) + ((nodeType === 'byProductItem') ? '_byProduct' : '');
+            const data  = { id, nodeType, itemId, image: this.items[itemId].image };
+
+                if(nodeType === 'mainNode')
+                {
+                    data.qty        = qty;
+                }
+                else
+                {
+                    data.neededQty  = qty;
+                }
+                if(nodeType === 'byProductItem')
+                {
+                    data.qtyUsed        = 0;
+                    data.qtyProduced    = qty;
+                }
+
+            this.graphNodes.push({ data });
+            addPhysical(flowId, { id, out: new Map(side === 'out' ? [[itemId, qty]] : []), in: new Map(side === 'in' ? [[itemId, qty]] : []) });
+        };
+
+        // 1) Collect machine groups (recipes and extractors), place item nodes
+        const groups = [];
+            for(const node of flows.nodes)
+            {
+                switch(node.type)
+                {
+                    case 'recipe':
+                    {
+                        const recipe    = recipes.get(node.recipe);
+                        const data      = game.recipes[recipe.id];
+                        const mainOut   = data.products[0];
+                        const net       = netRates(data, 1);
+
+                        // maxLevel may keep only part of a recipe: amplified machines first, then base ones
+                        const amplified = recipe.amplified.map(a => ({ ...a, machines: a.machines * (node.amplifiedShare ?? 1) }));
+                        const base      = Math.max(0, recipe.machines - recipe.amplified.reduce((total, a) => total + a.machines, 0)) * (node.baseShare ?? 1);
+
+                        groups.push({
+                            flowId      : node.id,
+                            building    : recipe.building,
+                            recipeId    : recipe.id,
+                            itemOut     : mainOut.item,
+                            rateOut     : internal(mainOut.item, mainOut.rate),
+                            net,
+                            data,
+                            clockLimit  : beltClock(net),
+                            machines    : base,
+                            amplified,
+                            extractor   : false
+                        });
+                        break;
+                    }
+
+                    case 'resource':
+                    {
+                        const resource  = resources.get(node.item);
+                        const rate      = (resource?.machines > 0) ? internal(node.item, resource.qty / resource.machines) : null;
+                        const qty       = internal(node.item, node.qty);
+
+                        if(rate === null || this.buildings[resource.building] === undefined)
+                        {
+                            pushItem(node.id, 'lastNodeItem', node.item, qty, 'out');
+                            break;
+                        }
+
+                        groups.push({
+                            flowId      : node.id,
+                            building    : resource.building,
+                            recipeId    : game.resources[node.item].recipes[0],
+                            itemOut     : node.item,
+                            rateOut     : rate,
+                            net         : new Map([[node.item, rate]]),
+                            clockLimit  : beltMax(node.item) / rate,
+                            machines    : qty / rate,
+                            amplified   : [],
+                            extractor   : true
+                        });
+                        break;
+                    }
+
+                    case 'output':
+                        beltChunks(node.item, internal(node.item, node.qty)).forEach(qty => pushItem(node.id, 'mainNode', node.item, qty, 'in'));
+                        break;
+
+                    case 'input':
+                        beltChunks(node.item, internal(node.item, node.qty)).forEach(qty => pushItem(node.id, 'byProductItem', node.item, qty, 'out'));
+                        break;
+
+                    case 'surplus':
+                        pushItem(node.id, 'byProductItem', node.item, internal(node.item, node.qty), 'in');
+                        break;
+
+                    case 'missing':
+                    case 'lastNode':
+                        pushItem(node.id, 'lastNodeItem', node.item, internal(node.item, node.qty), 'out');
+                        break;
+                }
+            }
+
+        // 2) Power shards
+        this.allocatePowerShards(groups);
+
+        // 3) Buildings
+        for(const group of groups)
+        {
+            // Amplified machines hold their somersloops; the solver kept their boosted rates within belts
+            for(const amplified of group.amplified)
+            {
+                const net = netRates(group.data, amplified.factor);
+
+                for(const clock of machineClocks(amplified.machines, 1))
+                {
+                    pushBuilding(group.flowId, group, clock, net, { somersloops: amplified.somersloops, factor: amplified.factor });
+                }
+            }
+
+            for(const { clock, shards } of this.machineClocksWithShards(group, machineClocks))
+            {
+                pushBuilding(group.flowId, group, clock, group.net, { clockSpeed: 100 + 50 * shards });
+            }
+        }
+
+        /*
+         * Wire machines item by item (north-west corner, deterministic): producers and consumers
+         * are walked in order, so each machine feeds a contiguous run of consumers. This gives at
+         * most (producers + consumers - 1) belts per item and keeps splitters / mergers low.
+         */
+        const producers = new Map(), consumers = new Map();
+        const enlist    = (map, itemId, unit) => {
+            if(map.has(itemId) === false){ map.set(itemId, []); }
+            if(map.get(itemId).includes(unit) === false){ map.get(itemId).push(unit); }
+        };
+
+            // Only units that take part in a flow of the plan (maxLevel may have cut some)
+            for(const flow of flows.edges)
+            {
+                (physical.get(flow.source) ?? []).forEach(unit => enlist(producers, flow.item, unit));
+                (physical.get(flow.target) ?? []).forEach(unit => enlist(consumers, flow.item, unit));
+            }
+
+        const edges = new Map();
+            for(const [itemId, sources] of producers)
+            {
+                const targets   = consumers.get(itemId) ?? [];
+                let i = 0, j = 0;
+
+                while(i < sources.length && j < targets.length)
+                {
+                    const available = sources[i].out.get(itemId) ?? 0;
+                        if(available <= EPSILON){ i++; continue; }
+                    const needed    = targets[j].in.get(itemId) ?? 0;
+                        if(needed <= EPSILON){ j++; continue; }
+
+                    const moved     = Math.min(available, needed);
+                    const key       = sources[i].id + '_' + targets[j].id + '_' + itemId;
+
+                        if(edges.has(key) === false)
+                        {
+                            edges.set(key, { id: key, source: sources[i].id, target: targets[j].id, itemId: itemId, qty: 0 });
+                        }
+                        edges.get(key).qty += moved;
+
+                    sources[i].out.set(itemId, available - moved);
+                    targets[j].in.set(itemId, needed - moved);
+                }
+            }
+
+        for(const edge of edges.values())
+        {
+            this.graphEdges.push({ data: edge });
         }
     }
 
-    buildCurrentNodeTree(options)
+    /*
+     * Power shards: each one adds 50% clock to a machine, up to 250% and never beyond a belt / pipe.
+     * Shards go, one building at a time, where removing a building costs the fewest shards
+     * (extraction first on ties, like the legacy merge pass), within the overclocking options.
+     */
+    allocatePowerShards(groups)
     {
-        if(this.debug === true)
+        const EPSILON   = 1e-6;
+        let available   = this.options.availablePowerShards;
+
+        for(const group of groups)
         {
-            console.log('buildCurrentNodeTree', options.qty, options.recipe, options.level);
+            const cap       = Math.min(1, group.clockLimit);
+
+            group.count     = (group.machines > EPSILON) ? Math.ceil(group.machines / cap - EPSILON) : 0;
+            group.shards    = 0;
+            group.maxClock  = Math.min(2.5, group.clockLimit);
+            group.overclock = group.machines > EPSILON && group.maxClock > 1 + EPSILON && this.canOverclock(group.building);
         }
 
-        let buildingId = this.getProductionBuildingFromRecipeId(options.recipe);
-            if(buildingId !== null)
+        while(available > 0)
+        {
+            let best = null;
+                for(const group of groups)
+                {
+                    if(group.overclock === false || group.count <= 1){ continue; }
+
+                    const shards    = this.shardsNeeded(group.machines, group.count - 1, group.maxClock);
+                    const cost      = shards - group.shards;
+
+                    if(Number.isFinite(shards) && cost <= available
+                        && (best === null || cost < best.cost || (cost === best.cost && group.extractor && best.group.extractor === false)))
+                    {
+                        best = { group, shards, cost };
+                    }
+                }
+
+            if(best === null){ break; }
+
+            available          -= best.cost;
+            best.group.shards   = best.shards;
+            best.group.count--;
+        }
+    }
+
+    canOverclock(buildingId)
+    {
+        if(buildingId.startsWith('Build_MinerMk')){ return this.options.allowMinerOverclocking === true; }
+        if(buildingId.startsWith('Build_OilPump')){ return this.options.allowPumpOverclocking === true; }
+
+        return this.options.allowBuildingOverclocking === true;
+    }
+
+    /*
+     * Fewest shards to run `machines` (in 100% units) on `count` buildings clocked up to `maxClock`:
+     * whole 50% steps first, then the last partial step each building may still take below its cap.
+     */
+    shardsNeeded(machines, count, maxClock)
+    {
+        const EPSILON   = 1e-6;
+        const extra     = machines - count;
+
+            if(count * maxClock < machines - EPSILON){ return Infinity; }
+            if(extra <= EPSILON){ return 0; }
+
+        const steps     = Math.floor((maxClock - 1) / 0.5 + EPSILON);
+        const partial   = (maxClock - 1) - 0.5 * steps;
+
+            if(extra <= 0.5 * steps * count + EPSILON)
             {
-                let productionCraftingTime  = 4,
-                    productionPieces        = 1,
-                    productionRecipe        = false;
-
-                    this.nodeIdKey++;
-
-                    if(this.buildings[buildingId].extractionRate !== undefined)
-                    {
-                        productionCraftingTime  = 0.5;
-
-                        switch(buildingId)
-                        {
-                            case 'Build_FrackingExtractor_C':
-                                if(options.recipe === 'Recipe_CrudeOil_C')
-                                {
-                                    if(this.buildings[buildingId].extractionRate[this.options.oilSpeed] !== undefined)
-                                    {
-                                        productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate[this.options.oilSpeed]);
-                                    }
-                                }
-                                else
-                                {
-                                    if(options.recipe === 'Recipe_CrudeWater_C')
-                                    {
-                                        if(this.buildings[buildingId].extractionRate[this.options.waterSpeed] !== undefined)
-                                        {
-                                            productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate[this.options.waterSpeed]);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        if(this.buildings[buildingId].extractionRate[this.options.gasSpeed] !== undefined)
-                                        {
-                                            productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate[this.options.gasSpeed]);
-                                        }
-                                    }
-                                }
-                                break;
-                            case 'Build_OilPump_C':
-                                if(this.buildings[buildingId].extractionRate[this.options.oilSpeed] !== undefined)
-                                {
-                                    productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate[this.options.oilSpeed]);
-                                }
-                                break;
-                            case 'Build_WaterPump_C':
-                                productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate['RP_Normal']);
-                                break;
-                            default:
-                                if(this.buildings[buildingId].extractionRate[this.options.oreSpeed] !== undefined)
-                                {
-                                    productionCraftingTime = 60 / this.buildings[buildingId].extractionRate[this.options.oreSpeed];
-                                }
-                        }
-                    }
-                    else
-                    {
-                        if(this.recipes[options.recipe].ingredients !== undefined)
-                        {
-                            productionRecipe    = this.recipes[options.recipe].ingredients;
-                        }
-
-                        if(this.recipes[options.recipe].mManufactoringDuration !== undefined)
-                        {
-                            productionCraftingTime  = this.recipes[options.recipe].mManufactoringDuration;
-                        }
-                        if(this.recipes[options.recipe].mManualManufacturingMultiplier !== undefined && buildingId === 'Build_Workshop_C')
-                        {
-                            productionCraftingTime *= this.recipes[options.recipe].mManualManufacturingMultiplier;
-                        }
-
-                        if(this.recipes[options.recipe].produce !== undefined)
-                        {
-                            for(let producedClassName in this.recipes[options.recipe].produce)
-                            {
-                                if(producedClassName === this.items[options.id].className)
-                                {
-                                    productionPieces        = this.recipes[options.recipe].produce[producedClassName];
-                                }
-                            }
-                        }
-                    }
-
-                    let currentParentVisId  = buildingId + '_'  + this.nodeIdKey,
-                        qtyProduced         = (60 / productionCraftingTime * productionPieces),
-                        qtyUsed             = Math.min(qtyProduced, options.qty),
-                        qtyUsedWithBoost    = Math.min(qtyProduced, options.qty),
-                        maxSomerSloops      = 0,
-                        nodeData            = {
-                            id                  : currentParentVisId,
-                            nodeType            : 'productionBuilding',
-                            buildingType        : buildingId,
-                            recipe              : options.recipe,
-                            itemOut             : options.id,
-                            qtyProducedDefault  : ((buildingId === 'Build_Workshop_C') ? 999999999 : qtyProduced),
-                            qtyProduced         : ((buildingId === 'Build_Workshop_C') ? 999999999 : qtyProduced),
-                            qtyUsed             : qtyUsed,
-                            clockSpeed          : 100,
-                            image               : this.buildings[buildingId].image
-                        };
-
-                        // Add production boost?
-                        if(['Build_SmelterMk1_C', 'Build_ConstructorMk1_C'].includes(buildingId)){ maxSomerSloops = 1; }
-                        if(['Build_FoundryMk1_C', 'Build_AssemblerMk1_C', 'Build_OilRefinery_C', 'Build_Converter_C'].includes(buildingId)){ maxSomerSloops = 2; }
-                        if(['Build_ManufacturerMk1_C', 'Build_Blender_C', 'Build_HadronCollider_C', 'Build_QuantumEncoder_C'].includes(buildingId)){ maxSomerSloops = 4; }
-
-                        if(this.options.availableSomerSloops > 0 && maxSomerSloops > 0)
-                        {
-                            while(this.options.availableSomerSloops > 0 && ((nodeData.isProductionBoosted !== undefined) ? nodeData.isProductionBoosted : 0) < maxSomerSloops && options.qty > qtyUsed)
-                            {
-                                this.options.availableSomerSloops--;
-
-                                if(nodeData.isProductionBoosted  === undefined)
-                                {
-                                    nodeData.isProductionBoosted     = 0;
-                                    nodeData.qtyProducedBeforeBoost  = nodeData.qtyProduced;
-                                }
-
-                                qtyUsedWithBoost     += nodeData.qtyProducedDefault * (1 / maxSomerSloops);
-                                nodeData.qtyProduced += nodeData.qtyProducedDefault * (1 / maxSomerSloops);
-
-                                nodeData.isProductionBoosted++;
-                            }
-                        }
-
-                        // Should we reduce building speed for belts?
-                        if(productionRecipe !== false)
-                        {
-                            let isTooFast = true;
-                                while(isTooFast === true)
-                                {
-                                    isTooFast = false;
-
-                                    if(qtyProduced > 0)
-                                    {
-                                        for(let recipeItemClassName in productionRecipe)
-                                        {
-                                            let requiredQty             = (60 / productionCraftingTime * productionRecipe[recipeItemClassName]) * qtyUsed / qtyProduced;
-                                            let recipeItemId            = this.getItemIdFromClassName(recipeItemClassName);
-                                            let maxProductionSpeed      = this.options.maxBeltSpeed;
-
-                                                if(this.items[recipeItemId] !== undefined && (this.items[recipeItemId].category === 'liquid' || this.items[recipeItemId].category === 'gas'))
-                                                {
-                                                    maxProductionSpeed  = this.options.maxPipeSpeed;
-                                                }
-                                                if(requiredQty > maxProductionSpeed)
-                                                {
-                                                    isTooFast = true;
-                                                    qtyUsed--;
-                                                    break;
-                                                }
-                                        }
-                                    }
-                                }
-                        }
-
-                    // Push new node!
-                    this.graphNodes.push({data: nodeData});
-
-                    // Push new edges between node and parent
-                    this.graphEdges.push({data: {
-                        id                  : currentParentVisId + '_' + options.visId,
-                        source              : currentParentVisId,
-                        target              : options.visId,
-                        itemId              : options.id,
-                        recipe              : options.recipe,
-                        qty                 : qtyUsedWithBoost
-                    }});
-
-                    // Add supplementalLoadType
-                    if(this.buildings[buildingId].supplementalLoadType !== undefined)
-                    {
-
-                    }
-
-                    // Add by-product
-                    if(this.recipes[options.recipe].produce !== undefined)
-                    {
-                        for(let producedClassName in this.recipes[options.recipe].produce)
-                        {
-                            if(producedClassName !== this.items[options.id].className)
-                            {
-                                let byProductId     = this.getItemIdFromClassName(producedClassName);
-                                let byProductQty    = qtyUsed / productionPieces * this.recipes[options.recipe].produce[producedClassName];
-
-                                let alreadyExistsByProductNode = false;
-
-                                // Find already last level item!
-                                for(let k = 0; k < this.graphNodes.length; k++)
-                                {
-                                    if(this.graphNodes[k].data.nodeType === 'byProductItem' && this.graphNodes[k].data.itemId === byProductId)
-                                    {
-                                        alreadyExistsByProductNode = true;
-
-                                        this.graphNodes[k].data.qtyProduced  += byProductQty;
-                                        this.graphNodes[k].data.neededQty    += byProductQty;
-
-                                        // Push new edges between node and parent
-                                        this.graphEdges.push({data: {
-                                            id                  : currentParentVisId + '_' + this.graphNodes[k].data.id,
-                                            source              : currentParentVisId,
-                                            target              : this.graphNodes[k].data.id,
-                                            itemId              : byProductId,
-                                            recipe              : options.recipe,
-                                            qty                 : byProductQty
-                                        }});
-
-                                        break;
-                                    }
-                                }
-
-                                if(alreadyExistsByProductNode === false)
-                                {
-                                    this.graphNodes.push({data: {
-                                        id                  : options.visId + '_byProduct',
-                                        nodeType            : 'byProductItem',
-                                        itemId              : byProductId,
-                                        qtyUsed             : 0,
-                                        qtyProduced         : byProductQty,
-                                        neededQty           : byProductQty,
-                                        image               : this.items[byProductId].image
-                                    }});
-
-                                    // Push new edges between node and parent
-                                    this.graphEdges.push({data: {
-                                        id                  : currentParentVisId + '_' + options.visId + '_byProduct',
-                                        source              : currentParentVisId,
-                                        target              : options.visId + '_byProduct',
-                                        itemId              : byProductId,
-                                        recipe              : options.recipe,
-                                        qty                 : byProductQty
-                                    }});
-                                }
-                            }
-                        }
-                    }
-
-                    if(productionRecipe !== false)
-                    {
-                        for(let recipeItemClassName in productionRecipe)
-                        {
-                            let recipeItemId    = this.getItemIdFromClassName(recipeItemClassName);
-                            let requiredQty     = (60 / productionCraftingTime * productionRecipe[recipeItemClassName]) * qtyUsed / qtyProduced;
-
-                            if(
-                                    this.options.maxLevel !== null && this.options.maxLevel === (options.level + 1)
-                                 && this.items[recipeItemId].category !== 'ore' && recipeItemId !== '/Game/FactoryGame/Resource/RawResources/CrudeOil/Desc_LiquidOil.Desc_LiquidOil_C' && recipeItemId !== '/Game/FactoryGame/Resource/RawResources/Water/Desc_Water.Desc_Water_C'
-                            )
-                            {
-                                // Find already last level item!
-                                let alreadyExistsLastNode = false;
-                                    for(let k = 0; k < this.graphNodes.length; k++)
-                                    {
-                                        if(this.graphNodes[k].data.nodeType === 'lastNodeItem' && this.graphNodes[k].data.itemId === recipeItemId)
-                                        {
-                                            alreadyExistsLastNode = true;
-
-                                            this.graphNodes[k].data.neededQty  += requiredQty;
-                                            this.graphEdges.push({data: {
-                                                id                  : this.graphNodes[k].data.id + '_' + currentParentVisId,
-                                                source              : this.graphNodes[k].data.id,
-                                                target              : currentParentVisId,
-                                                itemId              : recipeItemId,
-                                                qty                 : requiredQty
-                                            }});
-
-                                            break;
-                                        }
-                                    }
-
-                                if(alreadyExistsLastNode === false)
-                                {
-                                    let lastNodeVisId = currentParentVisId + '_' + recipeItemId;
-
-                                        // Push last node!
-                                        this.graphNodes.push({data: {
-                                            id                  : lastNodeVisId,
-                                            nodeType            : 'lastNodeItem',
-                                            itemId              : recipeItemId,
-                                            neededQty           : requiredQty,
-                                            image               : this.items[recipeItemId].image
-                                        }});
-
-                                        // Push new edges between node and parent
-                                        this.graphEdges.push({data: {
-                                            id                  : lastNodeVisId + '_' + currentParentVisId,
-                                            source              : lastNodeVisId,
-                                            target              : currentParentVisId,
-                                            itemId              : recipeItemId,
-                                            qty                 : requiredQty
-                                        }});
-                                }
-                            }
-                            else
-                            {
-                                let currentRecipe           = this.getRecipeToProduceItemId(recipeItemId);
-
-                                if(currentRecipe !== null)
-                                {
-                                    while(requiredQty > 0)
-                                    {
-                                        // Can we use by product?
-                                        let usesByProduct = false;
-                                            for(let i = 0; i < this.graphNodes.length; i ++)
-                                            {
-                                                if(this.graphNodes[i].data.nodeType === 'byProductItem')
-                                                {
-                                                    if(this.graphNodes[i].data.itemId === recipeItemId)
-                                                    {
-                                                        let remainingQty    = this.graphNodes[i].data.qtyProduced - this.graphNodes[i].data.qtyUsed;
-                                                        let useQty          = Math.min(remainingQty, requiredQty);
-
-                                                            if(useQty < 0)
-                                                            {
-                                                                useQty = remainingQty;
-                                                            }
-
-                                                        if(remainingQty > 0 && useQty > 0)
-                                                        {
-
-                                                                // Add edge between byProduct and item..
-                                                                this.graphEdges.push({data: {
-                                                                    id                  : this.graphNodes[i].data.id + '_' + currentParentVisId,
-                                                                    source              : this.graphNodes[i].data.id,
-                                                                    target              : currentParentVisId,
-                                                                    itemId              : recipeItemId,
-                                                                    qty                 : useQty
-                                                                }});
-
-                                                                this.graphNodes[i].data.qtyUsed    += useQty;
-                                                                requiredQty                        -= useQty;
-                                                                usesByProduct                       = true;
-
-                                                                break;
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                        if(usesByProduct === false)
-                                        {
-                                            // Regular node...
-                                            let qtyProducedByNode = this.buildCurrentNodeTree({
-                                                id              : recipeItemId,
-                                                recipe          : currentRecipe,
-                                                qty             : requiredQty,
-                                                visId           : currentParentVisId,
-                                                level           : (options.level + 1)
-                                            });
-
-                                            if(qtyProducedByNode !== false)
-                                            {
-                                                // Reduce needed quantity
-                                                requiredQty     -= qtyProducedByNode;
-                                            }
-                                            else
-                                            {
-                                                break; //Prevent infinite loop...
-                                            }
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                    // Can we use by last node yet?
-                                    let usesLastNode = false;
-                                        for(let i = 0; i < this.graphNodes.length; i ++)
-                                        {
-                                            if(this.graphNodes[i].data.nodeType === 'lastNodeItem')
-                                            {
-                                                if(this.graphNodes[i].data.itemId === recipeItemId)
-                                                {
-                                                    // Add edge between byProduct and item..
-                                                    this.graphEdges.push({data: {
-                                                        id                  : this.graphNodes[i].data.id + '_' + currentParentVisId,
-                                                        source              : this.graphNodes[i].data.id,
-                                                        target              : currentParentVisId,
-                                                        itemId              : recipeItemId,
-                                                        qty                 : requiredQty
-                                                    }});
-
-                                                    this.graphNodes[i].data.neededQty += requiredQty;
-                                                    usesLastNode                       = true;
-
-                                                    break;
-                                                }
-                                            }
-                                        }
-
-                                        if(usesLastNode === false)
-                                        {
-                                            let lastNodeVisId = currentParentVisId + '_' + recipeItemId;
-
-                                                // Push last node!
-                                                this.graphNodes.push({data: {
-                                                    id                  : lastNodeVisId,
-                                                    nodeType            : 'lastNodeItem',
-                                                    itemId              : recipeItemId,
-                                                    neededQty           : requiredQty,
-                                                    image               : this.items[recipeItemId].image
-                                                }});
-
-                                                // Push new edges between node and parent
-                                                this.graphEdges.push({data: {
-                                                    id                  : lastNodeVisId + '_' + currentParentVisId,
-                                                    source              : lastNodeVisId,
-                                                    target              : currentParentVisId,
-                                                    itemId              : recipeItemId,
-                                                    useAlternateRecipe  : null,
-                                                    qty                 : requiredQty
-                                                }});
-                                        }
-                                }
-                            }
-                        }
-                    }
-
-                    return qtyUsedWithBoost;
+                return Math.ceil(extra / 0.5 - EPSILON);
             }
 
-        return false;
+        return steps * count + Math.ceil((extra - 0.5 * steps * count) / partial - EPSILON);
+    }
+
+    /*
+     * Clocks of a group's (non amplified) buildings: without shards, full machines plus one partial;
+     * with shards, buildings are overclocked one after the other, the last one only as needed.
+     */
+    machineClocksWithShards(group, machineClocks)
+    {
+        const EPSILON = 1e-6;
+
+            if(group.shards === 0)
+            {
+                return machineClocks(group.machines, Math.min(1, group.clockLimit)).map(clock => ({ clock, shards: 0 }));
+            }
+
+        const clocks    = new Array(group.count).fill(1);
+        const shards    = new Array(group.count).fill(0);
+        const steps     = Math.floor((group.maxClock - 1) / 0.5 + EPSILON);
+        const partial   = (group.maxClock - 1) - 0.5 * steps;
+        let extra       = group.machines - group.count;
+        let last        = 0;
+
+            // Whole 50% steps first, then partial steps, as counted by shardsNeeded()
+            for(const [limit, step] of [[steps, 0.5], [steps + 1, partial]])
+            {
+                for(let i = 0; i < group.count && extra > EPSILON && step > EPSILON; i++)
+                {
+                    while(extra > EPSILON && shards[i] < limit)
+                    {
+                        clocks[i]  += step;
+                        shards[i]++;
+                        extra      -= step;
+                        last        = i;
+                    }
+                }
+            }
+
+        // The last overclocked building only runs as fast as needed
+        clocks[last] += extra;
+
+        return clocks.map((clock, i) => ({ clock, shards: shards[i] }));
+    }
+
+    buildManifolds()
+    {
+        this.postMessage({type: 'updateLoaderText', text: 'Building manifolds...'});
+
+        // Add merger
+        let mergers     = [];
+        let mergerKey   = 0;
+
+        for(let i = this.graphEdges.length - 1; i >= 0 ; i--)
+        {
+            if(this.graphEdges[i] === undefined)
+            {
+                continue;
+            }
+
+            let parentEdge      = this.graphEdges[i];
+            let currentMerger   = [];
+            let mergerQty       = 0;
+            let maxMergedQty    = this.options.maxBeltSpeed;
+
+                if(this.items[parentEdge.data.itemId].category === 'liquid' || this.items[parentEdge.data.itemId].category === 'gas')
+                {
+                    maxMergedQty = this.options.maxPipeSpeed;
+                }
+
+            for(let j = this.graphEdges.length - 1; j >= 0 ; j--)
+            {
+                if(this.graphEdges[j] === undefined)
+                {
+                    continue;
+                }
+
+                if(parentEdge.data.id !== this.graphEdges[j].data.id) // Not yet tested...
+                {
+                    if(parentEdge.data.itemId === this.graphEdges[j].data.itemId && parentEdge.data.target === this.graphEdges[j].data.target)
+                    {
+                        if((mergerQty + this.graphEdges[j].data.qty) <= maxMergedQty)
+                        {
+                            if(this.graphEdges[j].data.qty >= 0.1)
+                            {
+                                mergerQty += this.graphEdges[j].data.qty;
+                                currentMerger.push(this.graphEdges[j]);
+                            }
+
+                            delete this.graphEdges[j];
+                        }
+                    }
+                }
+            }
+
+            if(currentMerger.length > 0)
+            {
+                if(parentEdge.data.qty >= 0.1)
+                {
+                    mergerQty += parentEdge.data.qty;
+                    currentMerger.push(parentEdge);
+
+                    mergers.push({
+                        origin: parentEdge,
+                        mergerSources: currentMerger,
+                        mergerQty: mergerQty
+                    });
+                }
+
+                delete this.graphEdges[i];
+            }
+        }
+
+        if(mergers.length > 0)
+        {
+            for(let i = 0; i < mergers.length; i++)
+            {
+                mergerKey++;
+
+                let currentMergerTarget         = mergers[i].origin.data.target;
+                let currentMergerId             = 'merger_' + mergerKey;
+                let currentMergerTargetQty      = mergers[i].mergerQty;
+
+                for(let k = 0; k < mergers[i].mergerSources.length; k++)
+                {
+                    if(k % 2 === 0)
+                    {
+                        if((k + 1) < mergers[i].mergerSources.length) // Prevent solo merger ^^
+                        {
+                            if(k > 0)
+                            {
+                                mergerKey++;
+                                currentMergerTarget         = currentMergerId;
+                                currentMergerId             = 'merger_' + mergerKey;
+                            }
+
+                            this.graphNodes.push({data: {
+                                id          : currentMergerId,
+                                nodeType    : 'merger',
+                                itemId      : mergers[i].origin.data.itemId
+                            }});
+
+                            this.graphEdges.push({data: {
+                                id                  : 'merger_' + mergerKey + '_' + currentMergerTarget,
+                                source              : currentMergerId,
+                                target              : currentMergerTarget,
+                                itemId              : mergers[i].origin.data.itemId,
+                                qty                 : currentMergerTargetQty
+                            }});
+                        }
+                    }
+
+                    this.graphEdges.push({data: {
+                        id                  : mergers[i].mergerSources[k].data.source + '_' + currentMergerId,
+                        source              : mergers[i].mergerSources[k].data.source,
+                        target              : currentMergerId,
+                        itemId              : mergers[i].mergerSources[k].data.itemId,
+                        qty                 : mergers[i].mergerSources[k].data.qty
+                    }});
+
+                    currentMergerTargetQty -= mergers[i].mergerSources[k].data.qty;
+                }
+            }
+        }
+
+        // Add splitter
+        let splitters   = [];
+        let splitterKey = 0;
+        for(let i = 0; i < this.graphEdges.length; i++)
+        {
+            let currentSplitter   = [];
+            let splitterQty       = 0;
+
+            for(let j = 0; j < this.graphEdges.length; j++)
+            {
+                if(i !== j && this.graphEdges[i] !== undefined && this.graphEdges[j] !== undefined) // Not yet tested...
+                {
+                    if(this.graphEdges[i].data.itemId === this.graphEdges[j].data.itemId && this.graphEdges[i].data.source === this.graphEdges[j].data.source)
+                    {
+                        if(this.graphEdges[j].data.qty >= 0.1)
+                        {
+                            splitterQty += this.graphEdges[j].data.qty;
+                            currentSplitter.push(this.graphEdges[j]);
+                        }
+                        delete this.graphEdges[j];
+                    }
+                }
+            }
+
+            if(currentSplitter.length > 0)
+            {
+                if(this.graphEdges[i].data.qty >= 0.1)
+                {
+                    splitterQty += this.graphEdges[i].data.qty;
+                    currentSplitter.push(this.graphEdges[i]);
+
+                    splitters.push({
+                        origin: this.graphEdges[i],
+                        splitterTargets: currentSplitter,
+                        splitterQty: splitterQty
+                    });
+                }
+
+                delete this.graphEdges[i];
+            }
+        }
+
+        if(splitters.length > 0)
+        {
+            for(let i = 0; i < splitters.length; i++)
+            {
+                splitterKey++;
+
+                let currentSplitterSource       = splitters[i].origin.data.source;
+                let currentSplitterId           = 'splitter_' + splitterKey;
+                let currentSplitterSourceQty    = splitters[i].splitterQty;
+
+                for(let k = 0; k < splitters[i].splitterTargets.length; k++)
+                {
+                    if(k % 2 === 0 && k < (splitters[i].splitterTargets.length - 1))
+                    {
+                        if(k > 0)
+                        {
+                            splitterKey++;
+                            currentSplitterSource       = currentSplitterId;
+                            currentSplitterId           = 'splitter_' + splitterKey;
+                        }
+
+                        this.graphNodes.push({data: {
+                            id          : currentSplitterId,
+                            nodeType    : 'splitter',
+                            itemId      : splitters[i].origin.data.itemId
+                        }});
+
+                        this.graphEdges.push({data: {
+                            id                  : currentSplitterSource + '_splitter_' + splitterKey,
+                            source              : currentSplitterSource,
+                            target              : currentSplitterId,
+                            itemId              : splitters[i].origin.data.itemId,
+                            qty                 : currentSplitterSourceQty
+                        }});
+                    }
+
+                    this.graphEdges.push({data: {
+                        id                  : currentSplitterId + '_' + splitters[i].splitterTargets[k].data.target,
+                        source              : currentSplitterId,
+                        target              : splitters[i].splitterTargets[k].data.target,
+                        itemId              : splitters[i].splitterTargets[k].data.itemId,
+                        qty                 : splitters[i].splitterTargets[k].data.qty
+                    }});
+
+                    currentSplitterSourceQty -= splitters[i].splitterTargets[k].data.qty;
+                }
+            }
+        }
     }
 
 
@@ -1152,7 +1139,14 @@ export default class Solver_Realistic extends Worker_Wrapper
                                 powerUsage = (this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][0] + this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][1]) / 2;
                             }
 
-                            this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.321929); // Update 7
+                            // Production amplification multiplies power by (1 + somersloops / slots)²
+                            let amplification = 1;
+                                if(nodeData.isProductionBoosted !== undefined && AMPLIFIER_SLOTS[nodeData.buildingType] > 0)
+                                {
+                                    amplification = Math.pow(1 + nodeData.isProductionBoosted / AMPLIFIER_SLOTS[nodeData.buildingType], 2);
+                                }
+
+                            this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.321929) * amplification; // Update 7
                             //this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.6);
                         }
                 }
@@ -1164,38 +1158,18 @@ export default class Solver_Realistic extends Worker_Wrapper
         }
     }
 
-
-
-    testEdgesMaxSpeeds(mergingNodeData, sourceNodeData, mergedPercentage)
+    /*
+     * The LP graph can contain loops (Recycled Rubber <-> Recycled Plastic): stop the recursion
+     * when a node is already on the current branch. Shared nodes still show under each parent.
+     */
+    buildHierarchyTree(parentId)
     {
-        let inputQty        = {};
-            for(let k = 0; k < this.graphEdges.length; k++)
-            {
-                if(this.graphEdges[k] !== undefined)
-                {
-                    if(this.graphEdges[k].data.target === mergingNodeData.id || this.graphEdges[k].data.target === sourceNodeData.id)
-                    {
-                        if(inputQty[this.graphEdges[k].data.itemId] === undefined)
-                        {
-                            inputQty[this.graphEdges[k].data.itemId] = 0;
-                        }
+        if(this.treePath.has(parentId)){ return ''; }
 
-                        inputQty[this.graphEdges[k].data.itemId] += this.graphEdges[k].data.qty * (mergedPercentage / 100);
+        this.treePath.add(parentId);
+        const html = super.buildHierarchyTree(parentId);
+        this.treePath.delete(parentId);
 
-                        let currentMaxMergedQty = this.options.maxBeltSpeed;
-                            if(this.items[this.graphEdges[k].data.itemId].category === 'liquid' || this.items[this.graphEdges[k].data.itemId].category === 'gas')
-                            {
-                                currentMaxMergedQty = this.options.maxPipeSpeed;
-                            }
-
-                            if(inputQty[this.graphEdges[k].data.itemId] > currentMaxMergedQty)
-                            {
-                                return false;
-                            }
-                    }
-                }
-            }
-
-        return true;
+        return html;
     }
 }

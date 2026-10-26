@@ -1,11 +1,4 @@
-/* global Intl, URL, gtag */
-
-// WORKERS
-import ProductionWorker                             from './ProductionWorker.js';
-import Worker_Wrapper                               from './Worker/Wrapper.js';
-
-import Solver_Simple                                from './Solver/Simple.js';
-import Solver_Realistic                             from './Solver/Realistic.js';
+/* global Intl, URL, gtag, __webpack_public_path__ */
 
 export default class SCPP
 {
@@ -30,17 +23,6 @@ export default class SCPP
 
         this.collectedSchematics        = new Schematics({language: this.language});
         this.activatedMods              = [];
-
-        this.availableWorkers           = {
-            SIMPLE                          : {
-                name    : 'Solver_Simple',
-                class   : Solver_Simple
-            },
-            REALISTIC                       : {
-                name    : 'Solver_Realistic',
-                class   : Solver_Realistic
-            }
-        };
     }
 
     start()
@@ -49,7 +31,7 @@ export default class SCPP
         {
             this.intervalScriptsVERSION = setInterval(this.checkVersion.bind(this), 300 * 1000);
         }
-        
+
         // Handle pt_BR locales
         this.language = this.language.split('_')[0];
 
@@ -322,6 +304,12 @@ export default class SCPP
             this.triggerUpdateDebounce();
         }.bind(this));
 
+        // Maximize the requested outputs (their quantities as ratios) from the provided inputs
+        $('#maximizeOutputs').on('click', function(e){
+            e.preventDefault();
+            this.updateRequired(false, true);
+        }.bind(this));
+
         // Sync alternative recipes on change
         $('select[name="altRecipes[]"]').on('changed.bs.select', function(e, clickedIndex, isSelected, previousValue){
             let clickedValue = $(this).find('option:eq(' + clickedIndex + ')').attr('value');
@@ -435,7 +423,7 @@ export default class SCPP
         }.bind(this), 500);
     }
 
-    updateRequired(initialCall = false)
+    updateRequired(initialCall = false, maximize = false)
     {
         let fullRefreshRequired = false;
         let activatedMods       = [];
@@ -591,6 +579,13 @@ export default class SCPP
             {
                 formData.activatedMods = this.activatedMods;
             }
+            if(maximize === true)
+            {
+                formData.maximizeOutputs = true;    // Internal flag from the button, never a form field
+            }
+
+            // Maximizing only makes sense from provided inputs
+            $('#maximizeOutputs').toggle(formData.input !== undefined);
 
             this.calculate(formData, initialCall, fullRefreshRequired);
         }.bind(this));
@@ -626,20 +621,37 @@ export default class SCPP
 
 
 
+    /*
+     * Each view runs in its own worker.
+     * Production build: the workers are separate webpack entries next to SCPP.js, served from the
+     * static domain. A worker script must come from the page's origin, so a same-origin blob loads
+     * the real script with importScripts() (allowed across origins), with the planner's version.
+     * Unbundled (tests): module worker straight from the sources.
+     */
+    createWorker(view)
+    {
+        const name = (view === 'REALISTIC') ? 'Realistic' : 'Simple';
+
+        if(typeof __webpack_public_path__ !== 'undefined')
+        {
+            const scriptURL = new URL('SCPP-' + name + '.js?v=' + this.scriptsVERSION, new URL(__webpack_public_path__, location.href)).href;
+            const blobURL   = URL.createObjectURL(new Blob(['importScripts(' + JSON.stringify(scriptURL) + ');'], { type: 'application/javascript' }));
+            const worker    = new Worker(blobURL);
+
+                setTimeout(function(){ URL.revokeObjectURL(blobURL); }, 1500);
+
+            return worker;
+        }
+
+        const sources = import.meta.url;
+        return new Worker(new URL('./Worker/' + name + '.js', sources), { type: 'module' });
+    }
+
     calculate(formData, initialCall, fullRefreshRequired = false)
     {
         this.reset();
 
-        // Create a custom worker based on required view
-        let blobScript  = new Blob([
-                Worker_Wrapper.toString(), ';',
-                this.availableWorkers[formData.view].class.toString(), ';',
-                '(', ProductionWorker.toString(), ')(' + this.availableWorkers[formData.view].name + ');'
-            ], { type: 'application/javascript' });
-        let blobURL     = URL.createObjectURL(blobScript);
-            this.worker = new Worker(blobURL);
-
-            setTimeout(function(){ URL.revokeObjectURL(blobURL); }, 1500);
+        this.worker = this.createWorker(formData.view);
 
         // Planner states
         this.worker.onmessage = function(e)
@@ -683,19 +695,14 @@ export default class SCPP
                 case 'updateBuildingsList':
                     return this[e.data.type](e.data.data);
 
-                case 'addAlternateRecipe':
-                    $('#mainAltRecipe option[value="' + e.data.recipeId + '"]').prop('selected', true);
-                    $('#mainAltRecipe').selectpicker('refresh');
-                    this.triggerUpdateDebounce();
-
-                    return;
-
-                case 'removeAlternateRecipe':
-                    $('#mainAltRecipe option[value="' + e.data.recipeId + '"]').prop('selected', false);
-                    $('#mainAltRecipe').selectpicker('refresh');
-                    this.triggerUpdateDebounce();
-
-                    return;
+                case 'updateRequestedQuantities':
+                    // Maximize: fill the output quantities, then run a normal calculation with them
+                    for(let itemId in e.data.quantities)
+                    {
+                        $('input.requireInput[data-id="' + itemId + '"][data-type="output"]').val(e.data.quantities[itemId]);
+                    }
+                    this.terminateWorker();
+                    return this.updateRequired();
 
                 case 'done':
                     return this.terminateWorker();

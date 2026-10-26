@@ -59,7 +59,9 @@ export const OBJECTIVES = ['resources', 'power', 'buildings', 'sink'];
  * @param {Object<string, number>}  [request.inputs]        itemId → qty/min available for free
  * @param {boolean}                 [request.capInputs]     the inputs are the only source of those items (maximize from inputs):
  *                                                          no extraction, no recipe whose main product they are
- * @param {object}                  [request.recipes]       { alternates: [], conversions: [], exclude: [], allowAll: false }
+ * @param {object}                  [request.recipes]       { alternates: [], conversions: [], exclude: [], allowAll: false, forceOutputs: true }
+ *                                                          forceOutputs: an alternate chosen for a requested item is the recipe
+ *                                                          making it (the other recipes whose main product it is are left out)
  * @param {object}                  [request.extraction]    { ore|oil|water|gas: { building, purity } }
  * @param {Object<string, number>}  [request.resourceLimits]  itemId → max qty/min extracted (Infinity allowed)
  * @param {Object<string, number>}  [request.resourceWeights] itemId → cost per unit, overrides the defaults
@@ -266,6 +268,24 @@ function normaliseRequest(game, request)
             }
             if(exclude.has(id) === false){ enabled.add(id); }
         }
+
+    // An alternate selected for a requested output is the one used for it, even if another recipe is cheaper
+    if(recipeOptions.forceOutputs !== false)
+    {
+        const selected  = new Set(recipeOptions.alternates ?? []);
+        const mainOf    = (id) => game.recipes[id]?.products?.[0]?.item;
+
+        for(const item of new Set([...Object.keys(targets), ...Object.keys(maximize)]))
+        {
+            const chosen = [...enabled].filter(id => selected.has(id) && mainOf(id) === item);
+                if(chosen.length === 0){ continue; }
+
+            for(const id of [...enabled])
+            {
+                if(mainOf(id) === item && chosen.includes(id) === false){ enabled.delete(id); }
+            }
+        }
+    }
 
     const extraction = {};
         for(const [type, defaults] of Object.entries(DEFAULT_EXTRACTION))

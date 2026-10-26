@@ -14,6 +14,8 @@ export default class Solver_Realistic extends Worker_Wrapper
             maxLevel                    : null,
 
             availablePowerShards        : 0,
+            availableSomerSloops        : 0,
+
             allowMinerOverclocking      : true,
             allowPumpOverclocking       : true,
             allowBuildingOverclocking   : true
@@ -90,7 +92,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                 delete this.buildings.Build_MinerMk3_C;
             }
 
-            if(this.options.oreType !== 'Build_MinerMk2_C' || this.options.oreSpeed !== 'normal')
+            if(this.options.oreType !== 'Build_MinerMk2_C' || this.options.oreSpeed !== 'RP_Normal')
             {
                 this.url.oreExtraction = this.options.oreType + ';' + this.options.oreSpeed;
             }
@@ -104,7 +106,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                     this.options.oilSpeed   = oilOptions[1];
                 }
 
-            if(this.options.oilType !== 'Build_OilPump_C' || this.options.oilSpeed !== 'normal')
+            if(this.options.oilType !== 'Build_OilPump_C' || this.options.oilSpeed !== 'RP_Normal')
             {
                 this.url.oilExtraction = this.options.oilType + ';' + this.options.oilSpeed;
             }
@@ -118,7 +120,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                     this.options.waterSpeed = waterOptions[1];
                 }
 
-            if(this.options.waterType !== 'Build_WaterPump_C' || this.options.waterSpeed !== 'normal')
+            if(this.options.waterType !== 'Build_WaterPump_C' || this.options.waterSpeed !== 'RP_Normal')
             {
                 this.url.waterExtraction = this.options.waterType + ';' + this.options.waterSpeed;
             }
@@ -132,7 +134,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                     this.options.gasSpeed   = gasOptions[1];
                 }
 
-            if(this.options.gasType !== 'Build_FrackingExtractor_C' || this.options.gasSpeed !== 'normal')
+            if(this.options.gasType !== 'Build_FrackingExtractor_C' || this.options.gasSpeed !== 'RP_Normal')
             {
                 this.url.gasExtraction = this.options.gasType + ';' + this.options.gasSpeed;
             }
@@ -158,6 +160,12 @@ export default class Solver_Realistic extends Worker_Wrapper
                 this.options.allowBuildingOverclocking  = false;
                 this.url.buildingOverclocking           = formData.buildingOverclocking;
             }
+        }
+
+        if(this.options.mergeBuildings === 1 && formData.somerSloops !== undefined && formData.somerSloops > 0)
+        {
+            this.options.availableSomerSloops          = parseInt(formData.somerSloops);
+            this.url.somerSloops                       = formData.somerSloops;
         }
 
         super.initiate(formData);
@@ -249,7 +257,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                                         }
                                 }
 
-                                if(mergingNodeData.qtyUsed < mergingNodeData.qtyProduced)
+                                if(mergingNodeData.qtyUsed < mergingNodeData.qtyProducedDefault)
                                 {
                                     let maxMergedQty        = mergingNodeData.qtyUsed + sourceNodeData.qtyUsed;
                                     let mergedPercentage    = 100;
@@ -275,63 +283,34 @@ export default class Solver_Realistic extends Worker_Wrapper
                                             if(canMergeInputs === true && mergedPercentage === 100)
                                             {
                                                 // Update edges!
-                                                for(let k = 0; k < this.graphEdges.length; k++)
-                                                {
-                                                    if(this.graphEdges[k] !== undefined)
+                                                let productionBoostedRemoved = 0;
+                                                    for(let k = 0; k < this.graphEdges.length; k++)
                                                     {
-                                                        if(this.graphEdges[k].data.source === sourceNodeData.id)
+                                                        if(this.graphEdges[k] !== undefined)
                                                         {
-                                                            this.graphEdges[k].data.source = mergingNodeData.id;
-                                                        }
-                                                        if(this.graphEdges[k].data.target === sourceNodeData.id)
-                                                        {
-                                                            this.graphEdges[k].data.target = mergingNodeData.id;
+                                                            if(this.graphEdges[k].data.source === sourceNodeData.id)
+                                                            {
+                                                                this.graphEdges[k].data.source = mergingNodeData.id;
+                                                            }
+                                                            if(this.graphEdges[k].data.target === sourceNodeData.id)
+                                                            {
+                                                                if(mergingNodeData.isProductionBoosted !== undefined && productionBoostedRemoved < mergingNodeData.isProductionBoosted)
+                                                                {
+                                                                    productionBoostedRemoved++;
+                                                                    delete this.graphEdges[k];
+                                                                }
+                                                                else
+                                                                {
+                                                                    this.graphEdges[k].data.target = mergingNodeData.id;
+                                                                }
+                                                            }
                                                         }
                                                     }
-                                                }
 
                                                 delete this.graphNodes[j];
 
                                                 mergingNodeData.qtyUsed     = mergedQty;
                                             }
-                                        /**/
-                                        if(1 === 2 && canMergeInputs === true && mergedPercentage < 100 && pass === 2)
-                                        {
-                                            mergingNodeData.qtyUsed  = mergedQty;
-                                            sourceNodeData.qtyUsed  -= sourceNodeData.qtyUsed * (mergedPercentage / 100);
-
-                                            if(sourceNodeData.qtyUsed === 0)
-                                            {
-                                                delete this.graphNodes[j];
-                                            }
-                                            else
-                                            {
-                                                for(let k = 0; k < this.graphEdges.length; k++)
-                                                {
-                                                    if(this.graphEdges[k] !== undefined)
-                                                    {
-                                                        if(this.graphEdges[k].data.source === sourceNodeData.id || this.graphEdges[k].data.target === sourceNodeData.id)
-                                                        {
-                                                            let removedQty = this.graphEdges[k].data.qty * (mergedPercentage / 100);
-                                                                this.graphEdges[k].data.qty -= removedQty;
-
-                                                            for(let m = 0; m < this.graphEdges.length; m++)
-                                                            {
-                                                                if(this.graphEdges[m] !== undefined)
-                                                                {
-                                                                    if(m !== k && (this.graphEdges[m].data.source === mergingNodeData.id || this.graphEdges[m].data.target === mergingNodeData.id) && this.graphEdges[k].data.itemId === this.graphEdges[m].data.itemId)
-                                                                    {
-                                                                        this.graphEdges[m].data.qty += removedQty;
-                                                                        break;
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        /**/
                                     }
                                 }
                             }
@@ -729,7 +708,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                                 }
                                 break;
                             case 'Build_WaterPump_C':
-                                productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate['normal']);
+                                productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate['RP_Normal']);
                                 break;
                             default:
                                 if(this.buildings[buildingId].extractionRate[this.options.oreSpeed] !== undefined)
@@ -768,7 +747,45 @@ export default class Solver_Realistic extends Worker_Wrapper
 
                     let currentParentVisId  = buildingId + '_'  + this.nodeIdKey,
                         qtyProduced         = (60 / productionCraftingTime * productionPieces),
-                        qtyUsed             = Math.min(qtyProduced, options.qty);
+                        qtyUsed             = Math.min(qtyProduced, options.qty),
+                        qtyUsedWithBoost    = Math.min(qtyProduced, options.qty),
+                        maxSomerSloops      = 0,
+                        nodeData            = {
+                            id                  : currentParentVisId,
+                            nodeType            : 'productionBuilding',
+                            buildingType        : buildingId,
+                            recipe              : options.recipe,
+                            itemOut             : options.id,
+                            qtyProducedDefault  : ((buildingId === 'Build_Workshop_C') ? 999999999 : qtyProduced),
+                            qtyProduced         : ((buildingId === 'Build_Workshop_C') ? 999999999 : qtyProduced),
+                            qtyUsed             : qtyUsed,
+                            clockSpeed          : 100,
+                            image               : this.buildings[buildingId].image
+                        };
+
+                        // Add production boost?
+                        if(['Build_SmelterMk1_C', 'Build_ConstructorMk1_C'].includes(buildingId)){ maxSomerSloops = 1; }
+                        if(['Build_FoundryMk1_C', 'Build_AssemblerMk1_C', 'Build_OilRefinery_C', 'Build_Converter_C'].includes(buildingId)){ maxSomerSloops = 2; }
+                        if(['Build_ManufacturerMk1_C', 'Build_Blender_C', 'Build_HadronCollider_C', 'Build_QuantumEncoder_C'].includes(buildingId)){ maxSomerSloops = 4; }
+
+                        if(this.options.availableSomerSloops > 0 && maxSomerSloops > 0)
+                        {
+                            while(this.options.availableSomerSloops > 0 && ((nodeData.isProductionBoosted !== undefined) ? nodeData.isProductionBoosted : 0) < maxSomerSloops && options.qty > qtyUsed)
+                            {
+                                this.options.availableSomerSloops--;
+
+                                if(nodeData.isProductionBoosted  === undefined)
+                                {
+                                    nodeData.isProductionBoosted     = 0;
+                                    nodeData.qtyProducedBeforeBoost  = nodeData.qtyProduced;
+                                }
+
+                                qtyUsedWithBoost     += nodeData.qtyProducedDefault * (1 / maxSomerSloops);
+                                nodeData.qtyProduced += nodeData.qtyProducedDefault * (1 / maxSomerSloops);
+
+                                nodeData.isProductionBoosted++;
+                            }
+                        }
 
                         // Should we reduce building speed for belts?
                         if(productionRecipe !== false)
@@ -802,18 +819,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                         }
 
                     // Push new node!
-                    this.graphNodes.push({data: {
-                        id                  : currentParentVisId,
-                        nodeType            : 'productionBuilding',
-                        buildingType        : buildingId,
-                        recipe              : options.recipe,
-                        itemOut             : options.id,
-                        qtyProducedDefault  : ((buildingId === 'Build_Workshop_C') ? 999999999 : qtyProduced),
-                        qtyProduced         : ((buildingId === 'Build_Workshop_C') ? 999999999 : qtyProduced),
-                        qtyUsed             : qtyUsed,
-                        clockSpeed          : 100,
-                        image               : this.buildings[buildingId].image
-                    }});
+                    this.graphNodes.push({data: nodeData});
 
                     // Push new edges between node and parent
                     this.graphEdges.push({data: {
@@ -822,7 +828,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                         target              : options.visId,
                         itemId              : options.id,
                         recipe              : options.recipe,
-                        qty                 : qtyUsed
+                        qty                 : qtyUsedWithBoost
                     }});
 
                     // Add supplementalLoadType
@@ -900,7 +906,10 @@ export default class Solver_Realistic extends Worker_Wrapper
                             let recipeItemId    = this.getItemIdFromClassName(recipeItemClassName);
                             let requiredQty     = (60 / productionCraftingTime * productionRecipe[recipeItemClassName]) * qtyUsed / qtyProduced;
 
-                            if(this.options.maxLevel !== null && this.options.maxLevel === (options.level + 1) && this.items[recipeItemId].category !== 'ore' && recipeItemId !== '/Game/FactoryGame/Resource/RawResources/CrudeOil/Desc_LiquidOil.Desc_LiquidOil_C' && recipeItemId !== '/Game/FactoryGame/Resource/RawResources/Water/Desc_Water.Desc_Water_C')
+                            if(
+                                    this.options.maxLevel !== null && this.options.maxLevel === (options.level + 1)
+                                 && this.items[recipeItemId].category !== 'ore' && recipeItemId !== '/Game/FactoryGame/Resource/RawResources/CrudeOil/Desc_LiquidOil.Desc_LiquidOil_C' && recipeItemId !== '/Game/FactoryGame/Resource/RawResources/Water/Desc_Water.Desc_Water_C'
+                            )
                             {
                                 // Find already last level item!
                                 let alreadyExistsLastNode = false;
@@ -1070,7 +1079,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                         }
                     }
 
-                    return qtyUsed;
+                    return qtyUsedWithBoost;
             }
 
         return false;
@@ -1089,7 +1098,7 @@ export default class Solver_Realistic extends Worker_Wrapper
             let nodeData = this.graphNodes[i].data;
                 if(nodeData.nodeType === 'productionBuilding')
                 {
-                    let performance                                 = (nodeData.qtyUsed / nodeData.qtyProducedDefault * 100);
+                    let performance                     = (nodeData.qtyUsed / nodeData.qtyProducedDefault * 100);
 
                         this.graphNodes[i].data.label   = this.buildings[nodeData.buildingType].name
                                                         + ' (' + new Intl.NumberFormat(this.language).format(Math.round(performance)) + '%)'
@@ -1109,6 +1118,13 @@ export default class Solver_Realistic extends Worker_Wrapper
                         this.listBuildings[nodeData.buildingType] = 0;
                     }
                     this.listBuildings[nodeData.buildingType]++;
+
+                    if(nodeData.isProductionBoosted !== undefined)
+                    {
+                        this.graphNodes[i].data.label           += '\n(x' + nodeData.isProductionBoosted + ' somersloop)';
+                        this.graphNodes[i].data.font             = { color: 'rgb(166, 113, 166)' }; //"#a671a6";
+                        this.graphNodes[i].data.backgroundColor  = 'rgb(166, 113, 166)';
+                    }
 
                     // Calculate required power!
                     let powerUsage = 0;

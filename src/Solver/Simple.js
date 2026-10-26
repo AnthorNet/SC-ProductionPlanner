@@ -213,7 +213,7 @@ export default class Solver_Simple extends Worker_Wrapper
                                 }
                                 break;
                             case 'Build_WaterPump_C':
-                                productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate['normal']);
+                                productionCraftingTime = 60 / (this.buildings[buildingId].extractionRate['RP_Normal']);
                                 break;
                             default:
                                 if(this.buildings[buildingId].extractionRate[this.options.oreSpeed] !== undefined)

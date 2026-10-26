@@ -49,6 +49,9 @@ export default class SCPP
         {
             this.intervalScriptsVERSION = setInterval(this.checkVersion.bind(this), 300 * 1000);
         }
+        
+        // Handle pt_BR locales
+        this.language = this.language.split('_')[0];
 
         $.getJSON(this.gameDataUrl + '?v=' + this.scriptsVERSION, function(data)
         {
@@ -116,7 +119,14 @@ export default class SCPP
                         shape                   : 'square',
                         'background-fit'        : 'contain',
                         'background-image'      : 'data(image)',
-                        'background-opacity'    : 0
+                        'background-opacity'    : 0,
+                    }
+                },
+                {
+                    selector                : 'node[backgroundColor]',
+                    style                   : {
+                        'background-opacity'    : 1,
+                        'background-color'      : 'data(backgroundColor)',
                     }
                 },
                 {

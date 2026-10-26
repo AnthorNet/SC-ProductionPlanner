@@ -21,13 +21,13 @@ export default class Worker_Wrapper
             maxPipeSpeed                : 600000,
 
             oreType                     : 'Build_MinerMk2_C',
-            oreSpeed                    : 'normal',
+            oreSpeed                    : 'RP_Normal',
             oilType                     : 'Build_OilPump_C',
-            oilSpeed                    : 'normal',
+            oilSpeed                    : 'RP_Normal',
             waterType                   : 'Build_WaterPump_C',
-            waterSpeed                  : 'normal',
+            waterSpeed                  : 'RP_Normal',
             gasType                     : 'Build_FrackingExtractor_C',
-            gasSpeed                    : 'normal'
+            gasSpeed                    : 'RP_Normal'
         };
         this.inputItems     = {};
         this.requestedItems = [];

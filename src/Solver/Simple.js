@@ -83,13 +83,14 @@ export default class Solver_Simple extends Worker_Wrapper
     buildGraph(game, plan)
     {
         const internal  = (itemId, qty) => (game.items[itemId]?.fluid === true) ? qty * 1000 : qty;
-        const visIds    = new Map();
-        const visId     = (flowId) => {
-            if(visIds.has(flowId) === false)
+        const nodeIds   = new Map();
+        // Flow ids (recipe:..., resource:...) to graph node ids
+        const nodeId    = (flowId) => {
+            if(nodeIds.has(flowId) === false)
             {
-                visIds.set(flowId, flowId.split(':')[0] + '_' + (this.nodeIdKey++));
+                nodeIds.set(flowId, flowId.split(':')[0] + '_' + (this.nodeIdKey++));
             }
-            return visIds.get(flowId);
+            return nodeIds.get(flowId);
         };
 
         const recipes   = new Map(plan.recipes.map(recipe => [recipe.id, recipe]));
@@ -97,7 +98,7 @@ export default class Solver_Simple extends Worker_Wrapper
 
         for(const node of plan.flows.nodes)
         {
-            const id = visId(node.id);
+            const id = nodeId(node.id);
 
             switch(node.type)
             {
@@ -175,8 +176,8 @@ export default class Solver_Simple extends Worker_Wrapper
 
         for(const edge of plan.flows.edges)
         {
-            const source = visId(edge.source);
-            const target = visId(edge.target);
+            const source = nodeId(edge.source);
+            const target = nodeId(edge.target);
 
             this.graphEdges.push({data: {
                 id          : source + '_' + target + '_' + edge.item,

@@ -7,7 +7,8 @@
 const OBJECTIVE_ORDERS = {
     resources   : ['resources', 'buildings'],
     power       : ['power', 'resources', 'buildings'],
-    buildings   : ['buildings', 'resources']
+    buildings   : ['buildings', 'resources'],
+    alternates  : ['resources', 'buildings']     // Same costs, but the selected alternates are forced (see solverRequest)
 };
 
 export default class Worker_Wrapper
@@ -158,8 +159,17 @@ export default class Worker_Wrapper
             this.optimizeFor        = formData.optimizeFor;
             this.url.optimizeFor    = formData.optimizeFor;
         }
-        // One-shot run from the "Maximize" button: not part of the URL
-        if(formData.productionMode === 'maximize')
+        // Drawing options, only kept in the URL (the graph is drawn by the main thread), when not the defaults
+        if(['RIGHT', 'LEFT', 'DOWN', 'UP'].includes(formData.direction) && formData.direction !== 'RIGHT')
+        {
+            this.url.direction      = formData.direction;
+        }
+        if(formData.edgeStyle === 'orthogonal')
+        {
+            this.url.edgeStyle      = formData.edgeStyle;
+        }
+        // One-shot run from the "Maximize" button (internal flag, not a form field nor part of the URL)
+        if(formData.maximizeOutputs === true)
         {
             this.maximizeOutput     = true;
         }
@@ -178,7 +188,7 @@ export default class Worker_Wrapper
         const quantities    = Object.fromEntries(this.requestedItems.map(item => [item.id, Number(item.qty)]));
         const request       = {
             inputs      : this.inputItems,
-            recipes     : { alternates: this.altRecipes, conversions: this.convRecipes },
+            recipes     : { alternates: this.altRecipes, conversions: this.convRecipes, forceAll: this.optimizeFor === 'alternates' },
             extraction  : extraction,
             objectives  : OBJECTIVE_ORDERS[this.optimizeFor]
         };
@@ -381,7 +391,6 @@ export default class Worker_Wrapper
                     this.graphNodes[i].data.label   = ((nodeData.buildingType === 'Build_Workshop_C') ? '' : 'x' + new Intl.NumberFormat(this.language).format(Math.ceil(performance) / 100) + ' ')
                                                     + this.buildings[nodeData.buildingType].name
                                                     + '\n' + '(' + this.recipes[this.graphNodes[i].data.recipe].name + ')';
-                                                    //+ '(' + nodeData.qtyUsed + '/' + nodeData.qtyProduced + ')'; // DEBUG
 
                 // Add to items list
                 if(this.listItems[nodeData.itemOut] === undefined)
@@ -438,6 +447,15 @@ export default class Worker_Wrapper
     /**
      * COMMON FUNCTIONS
      */
+    // Power of one building at 100%: its own, or the middle of the recipe's range (variable power recipes)
+    buildingPower(buildingType, recipeId)
+    {
+        const building  = this.buildings[buildingType];
+        const range     = building?.powerUsedRecipes?.[recipeId];
+
+        return (range !== undefined) ? (range[0] + range[1]) / 2 : (building?.powerUsed ?? 0);
+    }
+
     getColorForPercentage(pct)
     {
         pct /= 100;
@@ -669,8 +687,6 @@ export default class Worker_Wrapper
 
     treeListProductionBuilding(performanceColor, performance)
     {
-        //html.push(' <em style="color: ' + this.graphNodes[k].data.performanceColor + '">(' + k + ')</em>'); // DEBUG
         return ' <em style="color: ' + performanceColor + '">(' + performance + '%)</em>';
-        //html.push(' <em style="color: ' + this.graphNodes[k].data.performanceColor + '">(' + this.graphNodes[k].data.qtyUsed + ' / ' + this.graphNodes[k].data.qtyProduced + ')</em>'); // DEBUG
     }
 }

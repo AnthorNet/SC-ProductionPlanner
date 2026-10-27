@@ -35,8 +35,6 @@ export default class Solver_Simple extends Worker_Wrapper
     // Worker only receive main thread initial options
     initiate(formData)
     {
-        //this.url.view               = formData.view;
-
         // No speed limit on SIMPLE (Mostly ^^)
         this.options.maxBeltSpeed   = Number.MAX_SAFE_INTEGER;
         this.options.maxPipeSpeed   = Number.MAX_SAFE_INTEGER;
@@ -76,6 +74,10 @@ export default class Solver_Simple extends Worker_Wrapper
             this.showNotice(plan.message);
             return;
         }
+        if(plan.warnings?.some(warning => warning.type === 'alternates_not_forced'))
+        {
+            this.showNotice('The selected alternate recipes cannot all be forced: the plan uses the cheapest recipes.');
+        }
 
         this.buildGraph(game, plan);
     }
@@ -114,7 +116,6 @@ export default class Solver_Simple extends Worker_Wrapper
                         recipe              : recipe.id,
                         itemOut             : mainOut.item,
                         qtyProducedDefault  : internal(mainOut.item, mainOut.rate),
-                        qtyProduced         : internal(mainOut.item, mainOut.rate),
                         qtyUsed             : internal(mainOut.item, mainOut.rate * recipe.machines),
                         clockSpeed          : 100,
                         image               : this.buildings[recipe.building].image
@@ -138,7 +139,6 @@ export default class Solver_Simple extends Worker_Wrapper
                             recipe              : game.resources[node.item].recipes[0],
                             itemOut             : node.item,
                             qtyProducedDefault  : internal(node.item, rate),
-                            qtyProduced         : internal(node.item, rate),
                             qtyUsed             : internal(node.item, resource.qty),
                             clockSpeed          : 100,
                             image               : extractor.image
@@ -195,8 +195,6 @@ export default class Solver_Simple extends Worker_Wrapper
             id          : id,
             nodeType    : nodeType,
             itemId      : itemId,
-            qtyUsed     : 0,
-            qtyProduced : qty,
             neededQty   : qty,
             image       : this.items[itemId].image
         }});
@@ -220,26 +218,14 @@ export default class Solver_Simple extends Worker_Wrapper
                     this.listBuildings[nodeData.buildingType] += nodeData.qtyUsed / nodeData.qtyProducedDefault;
 
                     // Calculate required power!
-                    let powerUsage = 0;
-                        // Fracking exrtractor
+                        // Fracking extractor: the smasher powers up to 6 extractors
                         if(nodeData.buildingType === 'Build_FrackingExtractor_C')
                         {
                             this.requiredPower += Math.ceil((nodeData.qtyUsed / nodeData.qtyProducedDefault) / 6) * this.buildings.Build_FrackingSmasher_C.powerUsed;
                         }
                         else
                         {
-                            // Basic building
-                            if(this.buildings[nodeData.buildingType].powerUsed !== undefined)
-                            {
-                                powerUsage = this.buildings[nodeData.buildingType].powerUsed;
-                            }
-                            // Custom recipe power usage (AVERAGE)
-                            if(this.buildings[nodeData.buildingType].powerUsedRecipes !== undefined && this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe] !== undefined)
-                            {
-                                powerUsage = (this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][0] + this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][1]) / 2;
-                            }
-
-                            this.requiredPower     += (nodeData.qtyUsed / nodeData.qtyProducedDefault) * powerUsage;
+                            this.requiredPower += (nodeData.qtyUsed / nodeData.qtyProducedDefault) * this.buildingPower(nodeData.buildingType, nodeData.recipe);
                         }
                 }
         }

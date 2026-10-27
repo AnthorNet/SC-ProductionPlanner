@@ -62,6 +62,8 @@ export const OBJECTIVES = ['resources', 'power', 'buildings', 'sink'];
  * @param {object}                  [request.recipes]       { alternates: [], conversions: [], exclude: [], allowAll: false, forceOutputs: true }
  *                                                          forceOutputs: an alternate chosen for a requested item is the recipe
  *                                                          making it (the other recipes whose main product it is are left out)
+ *                                                          forceAll: the same for every item a selected alternate makes; if no plan
+ *                                                          exists that way, the plan is made without it (warning alternates_not_forced)
  * @param {object}                  [request.extraction]    { ore|oil|water|gas: { building, purity } }
  * @param {Object<string, number>}  [request.resourceLimits]  itemId → max qty/min extracted (Infinity allowed)
  * @param {Object<string, number>}  [request.resourceWeights] itemId → cost per unit, overrides the defaults
@@ -72,6 +74,21 @@ export const OBJECTIVES = ['resources', 'power', 'buildings', 'sink'];
  *                                                          amplified machines whose boosted output would exceed it are not offered
  */
 export function solveProduction(game, request = {})
+{
+    if(request.recipes?.forceAll === true)
+    {
+        const forced = solveOnce(game, request);
+            if(forced.status === 'optimal'){ return forced; }
+
+        const relaxed = solveOnce(game, { ...request, recipes: { ...request.recipes, forceAll: false } });
+            relaxed.warnings = [...(relaxed.warnings ?? []), { type: 'alternates_not_forced', reason: forced.message }];
+        return relaxed;
+    }
+
+    return solveOnce(game, request);
+}
+
+function solveOnce(game, request)
 {
     const options   = normaliseRequest(game, request);
     let model       = buildModel(game, options);
@@ -269,13 +286,19 @@ function normaliseRequest(game, request)
             if(exclude.has(id) === false){ enabled.add(id); }
         }
 
-    // An alternate selected for a requested output is the one used for it, even if another recipe is cheaper
-    if(recipeOptions.forceOutputs !== false)
+    /*
+     * An alternate selected for a requested output is the one used for it, even if another recipe is cheaper.
+     * forceAll: the same for every item a selected alternate makes.
+     */
+    if(recipeOptions.forceOutputs !== false || recipeOptions.forceAll === true)
     {
         const selected  = new Set(recipeOptions.alternates ?? []);
         const mainOf    = (id) => game.recipes[id]?.products?.[0]?.item;
+        const items     = (recipeOptions.forceAll === true)
+                        ? [...selected].filter(id => enabled.has(id)).map(mainOf)
+                        : [...Object.keys(targets), ...Object.keys(maximize)];
 
-        for(const item of new Set([...Object.keys(targets), ...Object.keys(maximize)]))
+        for(const item of new Set(items))
         {
             const chosen = [...enabled].filter(id => selected.has(id) && mainOf(id) === item);
                 if(chosen.length === 0){ continue; }

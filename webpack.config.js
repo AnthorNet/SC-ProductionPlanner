@@ -17,7 +17,10 @@ module.exports = env => {
 
             // Workers: separate entries, loaded by SCPP.createWorker() (same-origin blob + importScripts)
             'SCPP-Simple'   : './Worker/Simple.js',
-            'SCPP-Realistic': './Worker/Realistic.js'
+            'SCPP-Realistic': './Worker/Realistic.js',
+
+            // Renderer alone for the other pages (balancers): window.SCPPRenderer
+            'SCPP-Renderer' : './Renderer/Global.js'
         },
 
         output          : {

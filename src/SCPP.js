@@ -1,5 +1,7 @@
 /* global Intl, URL, gtag, __webpack_public_path__ */
 
+import Renderer from './Renderer/Renderer.js';
+
 export default class SCPP
 {
     constructor()
@@ -13,7 +15,6 @@ export default class SCPP
         this.translate                  = {};
         this.productionContainer        = $('#productionContainer');
 
-        this.staticAssetsUrl            = "https://static.satisfactory-calculator.com";
         this.gameDataUrl                = "https://satisfactory-calculator.com/" + this.language + "/api/game";
 
         // Updater notice
@@ -72,109 +73,10 @@ export default class SCPP
 
     initiateGraph()
     {
-        this.graphLayout        = null;
-        this.graph              = cytoscape({
-            container               : document.getElementById('productionNetwork'),
-            wheelSensitivity        : 0.05,
-            layout                  : undefined,
-            elements                : {nodes: {}, edges: {}},
-            style                   : [
-                {
-                    selector                : 'node',
-                    style                   : {
-                        padding                 : '64px',
-                        width                   : '384px',
-                        height                  : '384px'
-                    }
-                },
-                {
-                    selector                : 'node[nodeType="merger"], node[nodeType="splitter"]',
-                    style                   : {
-                        padding                 : '32px',
-                        width                   : '128px',
-                        height                  : '128px'
-                    }
-                },
-                {
-                    selector                : 'node[image]',
-                    style                   : {
-                        shape                   : 'square',
-                        'background-fit'        : 'contain',
-                        'background-image'      : 'data(image)',
-                        'background-opacity'    : 0,
-                    }
-                },
-                {
-                    selector                : 'node[backgroundColor]',
-                    style                   : {
-                        'background-opacity'    : 1,
-                        'background-color'      : 'data(backgroundColor)',
-                    }
-                },
-                {
-                    selector                : 'node[performance]',
-                    style                   : {
-                        shape                   : 'ellipse',
-                        'background-fit'        : 'none',
-                        'background-width'      : '75%',
-                        'background-height'     : '75%',
-                        'border-width'          : 'data(borderWidth)'
-                    }
-                },
-                {
-                    selector                : 'node[performanceColor]',
-                    style                   : {
-                        'border-color'          : 'data(performanceColor)'
-                    }
-                },
-                {
-                    selector                : 'node[wasClicked]',
-                    style                   : {
-                        'background-color'      : '#00FF00',
-                        'background-opacity'    : 1
-                    }
-                },
-                {
-                    selector                : 'node[label]',
-                    style                   : {
-                        'text-margin-y'         : '20px',
-                        label                   : 'data(label)',
-                        'text-valign'           : 'bottom',
-                        'font-size'             : '64px;',
-                        'text-wrap'             : 'wrap',
-                        color                   : '#FFFFFF'
-                    }
-                },
-
-                {
-                    selector                : 'edge',
-                    style                   : {
-                        'curve-style'           : 'bezier',
-                        'target-arrow-shape'    : 'triangle',
-                        'line-color'            : '#2b7ce9',
-                        'target-arrow-color'    : '#2b7ce9',
-                        opacity                 : 1,
-                        width                   : '15px'
-                    }
-                },
-                {
-                    selector                : 'edge[color]',
-                    style                   : {
-                        'line-color'            : 'data(color)',
-                        'target-arrow-color'    : 'data(color)'
-                    }
-                },
-                {
-                    selector                : 'edge[label]',
-                    style                   : {
-                        'text-margin-y'         : '-30px',
-                        'text-rotation'         : 'autorotate',
-                        label                   : 'data(label)',
-                        'font-size'             : '36px;',
-                        color                   : '#FFFFFF'
-                    }
-                }
-            ]
+        this.graph = new Renderer(document.getElementById('productionNetwork'), {
+            buildings   : this.buildingsData,
+            items       : this.itemsData,
+            language    : this.language
         });
 
         return this.setupEvents();
@@ -596,8 +498,7 @@ export default class SCPP
     reset()
     {
         // Reset Network Graph
-        this.graph.elements().remove();
-        this.graph.off('tap', 'node');
+        this.graph.clear();
 
         // Terminate worker if needed
         this.terminateWorker();
@@ -679,7 +580,7 @@ export default class SCPP
                 case 'updateGraphNetwork':
                     if(fullRefreshRequired === false)
                     {
-                        return this.updateGraphNetwork(e.data.nodes, e.data.edges, formData.direction);
+                        return this.updateGraphNetwork(e.data.nodes, e.data.edges, formData.direction, formData.edgeStyle);
                     }
                     return;
 
@@ -728,60 +629,15 @@ export default class SCPP
     }
 
 
-    updateGraphNetwork(dataNodes, dataEdges, direction = 'RIGHT')
+    updateGraphNetwork(dataNodes, dataEdges, direction = 'RIGHT', edgeStyle = 'oblique')
     {
-        if(this.graphLayout !== null)
-        {
-            this.graphLayout.stop();
-        }
+        this.updateLoaderText('Drawing the production graph...');
 
-        this.graph.json({
-            elements: {
-                nodes: dataNodes,
-                edges: dataEdges
-            }
-        });
-
-        let layoutOptions = {
-                name                            : 'elk',
-                nodeDimensionsIncludeLabels     : true,
-                fit                             : true,
-                ranker                          : 'longest-path',
-                elk                             : {
-                    'elk.layered.spacing.nodeNodeBetweenLayers'     : 768,
-                    'elk.layered.spacing.nodeNode'                  : 512,
-                    'elk.direction'                                 : direction,
-                    'elk.algorithm'                                 : 'layered',
-                    'elk.layered.crossingMinimization.strategy'     : 'LAYER_SWEEP',
-                    'elk.edgeRouting'                               : "ORTHOGONAL",
-
-                    spacing                                         : 512,
-                    inLayerSpacingFactor                            : 50,
-                    layoutHierarchy                                 : true,
-                    intCoordinates                                  : true,
-                    zoomToFit                                       : true,
-                    separateConnectedComponents                     : false
-                }
-        };
-
-        this.graphLayout = this.graph.layout(layoutOptions);
-        this.graphLayout.on('layoutstop', function(){ this.hideLoader(); }.bind(this));
-
-        this.graphLayout.run();
-
-        this.graph.on('tap', 'node', function(evt){
-            if(this.data('nodeType') !== 'mainNode')
-            {
-                if(this.data('wasClicked') === undefined)
-                {
-                    this.data('wasClicked', true);
-                }
-                else
-                {
-                    this.removeData('wasClicked');
-                }
-            }
-        });
+        // Let the loader text show before the layout runs
+        requestAnimationFrame(function(){
+            this.graph.setGraph(dataNodes, dataEdges, direction, edgeStyle);
+            this.hideLoader();
+        }.bind(this));
     }
 
     updateTreeList(html)

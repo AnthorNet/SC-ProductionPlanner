@@ -223,6 +223,10 @@ export default class Solver_Realistic extends Worker_Wrapper
             this.showNotice(plan.message);
             return;
         }
+        if(plan.warnings?.some(warning => warning.type === 'alternates_not_forced'))
+        {
+            this.showNotice('The selected alternate recipes cannot all be forced: the plan uses the cheapest recipes.');
+        }
 
         const flows = (this.options.maxLevel !== null) ? this.cutAtMaxLevel(plan, plan.flows) : plan.flows;
 
@@ -543,7 +547,6 @@ export default class Solver_Realistic extends Worker_Wrapper
                 recipe              : group.recipeId,
                 itemOut             : group.itemOut,
                 qtyProducedDefault  : group.rateOut,
-                qtyProduced         : group.rateOut * (extra.clockSpeed ?? 100) / 100,
                 qtyUsed             : group.rateOut * clock,
                 clockSpeed          : extra.clockSpeed ?? 100,
                 image               : this.buildings[group.building].image
@@ -552,8 +555,6 @@ export default class Solver_Realistic extends Worker_Wrapper
                 if(extra.somersloops !== undefined)
                 {
                     data.isProductionBoosted    = extra.somersloops;
-                    data.qtyProducedBeforeBoost = group.rateOut;
-                    data.qtyProduced            = group.rateOut * extra.factor;
                 }
 
             this.graphNodes.push({ data });
@@ -579,11 +580,6 @@ export default class Solver_Realistic extends Worker_Wrapper
                 else
                 {
                     data.neededQty  = qty;
-                }
-                if(nodeType === 'byProductItem')
-                {
-                    data.qtyUsed        = 0;
-                    data.qtyProduced    = qty;
                 }
 
             this.graphNodes.push({ data });
@@ -682,7 +678,7 @@ export default class Solver_Realistic extends Worker_Wrapper
 
                 for(const clock of machineClocks(amplified.machines, 1))
                 {
-                    pushBuilding(group.flowId, group, clock, net, { somersloops: amplified.somersloops, factor: amplified.factor });
+                    pushBuilding(group.flowId, group, clock, net, { somersloops: amplified.somersloops });
                 }
             }
 
@@ -1089,10 +1085,7 @@ export default class Solver_Realistic extends Worker_Wrapper
 
                         this.graphNodes[i].data.label   = this.buildings[nodeData.buildingType].name
                                                         + ' (' + new Intl.NumberFormat(this.language).format(Math.round(performance)) + '%)'
-                                                        + '\n' + '(' + this.recipes[this.graphNodes[i].data.recipe].name + ')'
-                                                        //+ '\n' + '(' + nodeData.id + ')' // DEBUG
-                                                        //+ '\n' + '(' + nodeData.qtyUsed + '/' + nodeData.qtyProduced + ')' // DEBUG
-                                                        ;
+                                                        + '\n' + '(' + this.recipes[this.graphNodes[i].data.recipe].name + ')';
 
                         if(this.graphNodes[i].data.clockSpeed > 100)
                         {
@@ -1114,7 +1107,6 @@ export default class Solver_Realistic extends Worker_Wrapper
                     }
 
                     // Calculate required power!
-                    let powerUsage = 0;
                         // Fracking extractor
                         if(nodeData.buildingType === 'Build_FrackingExtractor_C')
                         {
@@ -1127,18 +1119,6 @@ export default class Solver_Realistic extends Worker_Wrapper
                         }
                         else
                         {
-                            // Basic building
-                            if(this.buildings[nodeData.buildingType].powerUsed !== undefined)
-                            {
-                                powerUsage = this.buildings[nodeData.buildingType].powerUsed;
-                            }
-
-                            // Custom recipe power usage (AVERAGE)
-                            if(this.buildings[nodeData.buildingType].powerUsedRecipes !== undefined && this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe] !== undefined)
-                            {
-                                powerUsage = (this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][0] + this.buildings[nodeData.buildingType].powerUsedRecipes[nodeData.recipe][1]) / 2;
-                            }
-
                             // Production amplification multiplies power by (1 + somersloops / slots)²
                             let amplification = 1;
                                 if(nodeData.isProductionBoosted !== undefined && AMPLIFIER_SLOTS[nodeData.buildingType] > 0)
@@ -1146,8 +1126,7 @@ export default class Solver_Realistic extends Worker_Wrapper
                                     amplification = Math.pow(1 + nodeData.isProductionBoosted / AMPLIFIER_SLOTS[nodeData.buildingType], 2);
                                 }
 
-                            this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.321929) * amplification; // Update 7
-                            //this.requiredPower     += powerUsage * Math.pow(performance / 100, 1.6);
+                            this.requiredPower     += this.buildingPower(nodeData.buildingType, nodeData.recipe) * Math.pow(performance / 100, 1.321929) * amplification; // Update 7
                         }
                 }
         }

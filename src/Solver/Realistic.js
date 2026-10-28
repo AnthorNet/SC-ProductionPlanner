@@ -182,7 +182,7 @@ export default class Solver_Realistic extends Worker_Wrapper
     {
         this.postMessage({type: 'updateLoaderText', text: 'Solving production plan...'});
 
-        const game      = prepareGameData({ buildings: this.buildings, items: this.items, recipes: this.recipes });
+        const game      = prepareGameData({ buildings: this.buildings, items: this.items, recipes: this.recipes }, { partsCostMultiplier: this.partsCostMultiplier });
         const request   = {
             ...this.solverRequest({
                 ore     : { building: this.options.oreType,     purity: this.options.oreSpeed },

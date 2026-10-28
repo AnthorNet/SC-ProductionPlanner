@@ -11,6 +11,9 @@ const OBJECTIVE_ORDERS = {
     alternates  : ['resources', 'buildings']     // Same costs, but the selected alternates are forced (see solverRequest)
 };
 
+// Values offered by the game for the "Recipe Parts Cost Multiplier" game mode
+export const PARTS_COST_MULTIPLIERS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
 export default class Worker_Wrapper
 {
     constructor(worker)
@@ -45,6 +48,7 @@ export default class Worker_Wrapper
         this.altRecipes     = [];
         this.convRecipes    = [];
         this.optimizeFor    = 'resources';
+        this.partsCostMultiplier = 1;
         this.maximizeOutput = false;
         this.notice         = null;     // Message from the solver, shown on top of the tree list
         this.requiredPower  = 0;
@@ -154,6 +158,13 @@ export default class Worker_Wrapper
         }
 
         // Search options of the LP solver
+        // "Recipe Parts Cost Multiplier" game mode (1.2)
+        if(PARTS_COST_MULTIPLIERS.includes(Number(formData.partsCostMultiplier)) && Number(formData.partsCostMultiplier) !== 1)
+        {
+            this.partsCostMultiplier        = Number(formData.partsCostMultiplier);
+            this.url.partsCostMultiplier    = this.partsCostMultiplier;
+        }
+
         if(OBJECTIVE_ORDERS[formData.optimizeFor] !== undefined && formData.optimizeFor !== 'resources')
         {
             this.optimizeFor        = formData.optimizeFor;

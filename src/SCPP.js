@@ -550,6 +550,9 @@ export default class SCPP
 
     calculate(formData, initialCall, fullRefreshRequired = false)
     {
+        // "Recipe Parts Cost Multiplier" game mode: also applies to the building costs listed here
+        this.partsCostMultiplier = Number(formData.partsCostMultiplier) || 1;
+
         this.reset();
 
         this.worker = this.createWorker(formData.view);
@@ -757,7 +760,7 @@ export default class SCPP
                                         id      : itemId,
                                         name    : this.itemsData[itemId].name,
                                         image   : this.itemsData[itemId].image,
-                                        qty     : this.recipesData[recipeId].ingredients[ingredient]
+                                        qty     : this.recipesData[recipeId].ingredients[ingredient] * this.partsCostMultiplier
                                     });
 
                                     break;

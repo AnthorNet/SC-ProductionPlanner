@@ -65,7 +65,11 @@ export function classifyRecipe(recipe)
     return 'standard';
 }
 
-export function prepareGameData(raw)
+/*
+ * options.partsCostMultiplier: "Recipe Parts Cost Multiplier" game mode (1.2): every recipe ingredient
+ * amount is multiplied; products and durations stay the same.
+ */
+export function prepareGameData(raw, { partsCostMultiplier = 1 } = {})
 {
     const buildingsData = raw.buildingsData ?? raw.buildings ?? {};
     const itemsData     = Object.assign({}, raw.toolsData ?? {}, raw.itemsData ?? raw.items ?? {});
@@ -129,7 +133,7 @@ export function prepareGameData(raw)
                 continue;
             }
 
-        const ingredients   = resolveStacks(recipe.ingredients, itemByClassName, items);
+        const ingredients   = resolveStacks(recipe.ingredients, itemByClassName, items, partsCostMultiplier);
         const products      = resolveStacks(recipe.produce, itemByClassName, items);
             if(ingredients === null || products === null)
             {
@@ -175,14 +179,16 @@ export function prepareGameData(raw)
     return { items, buildings, recipes, resources, skipped, itemByClassName };
 }
 
-function resolveStacks(stacks, itemByClassName, items)
+function resolveStacks(stacks, itemByClassName, items, multiplier = 1)
 {
     const resolved = [];
 
-    for(const [className, rawAmount] of Object.entries(stacks ?? {}))
+    for(const [className, stackAmount] of Object.entries(stacks ?? {}))
     {
         const item = itemByClassName.get(className);
             if(item === undefined){ return null; }
+
+        const rawAmount = stackAmount * multiplier;
 
         resolved.push({ item, amount: items[item].fluid ? rawAmount / 1000 : rawAmount });
     }

@@ -59,7 +59,7 @@ export default class Solver_Simple extends Worker_Wrapper
     {
         this.postMessage({type: 'updateLoaderText', text: 'Solving production plan...'});
 
-        const game  = prepareGameData({ buildings: this.buildings, items: this.items, recipes: this.recipes });
+        const game  = prepareGameData({ buildings: this.buildings, items: this.items, recipes: this.recipes }, { partsCostMultiplier: this.partsCostMultiplier });
         const plan  = solveProduction(game, this.solverRequest(EXTRACTION));
 
         switch(this.sendMaximizedQuantities(plan))

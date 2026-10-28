@@ -13,6 +13,8 @@ const OBJECTIVE_ORDERS = {
 
 // Values offered by the game for the "Recipe Parts Cost Multiplier" game mode
 export const PARTS_COST_MULTIPLIERS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+// ... and for the "Power Consumption Multiplier" one
+export const POWER_CONSUMPTION_MULTIPLIERS = [0.25, 0.5, 0.75, 1, 2, 5];
 
 export default class Worker_Wrapper
 {
@@ -49,6 +51,7 @@ export default class Worker_Wrapper
         this.convRecipes    = [];
         this.optimizeFor    = 'resources';
         this.partsCostMultiplier = 1;
+        this.powerConsumptionMultiplier = 1;
         this.maximizeOutput = false;
         this.notice         = null;     // Message from the solver, shown on top of the tree list
         this.requiredPower  = 0;
@@ -165,6 +168,13 @@ export default class Worker_Wrapper
             this.url.partsCostMultiplier    = this.partsCostMultiplier;
         }
 
+        // "Power Consumption Multiplier" game mode (1.2)
+        if(POWER_CONSUMPTION_MULTIPLIERS.includes(Number(formData.powerConsumptionMultiplier)) && Number(formData.powerConsumptionMultiplier) !== 1)
+        {
+            this.powerConsumptionMultiplier         = Number(formData.powerConsumptionMultiplier);
+            this.url.powerConsumptionMultiplier     = this.powerConsumptionMultiplier;
+        }
+
         if(OBJECTIVE_ORDERS[formData.optimizeFor] !== undefined && formData.optimizeFor !== 'resources')
         {
             this.optimizeFor        = formData.optimizeFor;
@@ -278,7 +288,8 @@ export default class Worker_Wrapper
 
         this.postMessage({type: 'updateLoaderText', text: 'Generating buildings layout...'});
         this.postMessage({type: 'updateGraphNetwork', nodes: this.graphNodes, edges: this.graphEdges});
-        this.postMessage({type: 'updateRequiredPower', power: this.requiredPower});
+        // "Power Consumption Multiplier" game mode: every building's consumption is scaled
+        this.postMessage({type: 'updateRequiredPower', power: this.requiredPower * this.powerConsumptionMultiplier});
         this.postMessage({type: 'updateItemsList', data: this.listItems});
         this.postMessage({type: 'updateBuildingsList', data: this.listBuildings});
         this.generateTreeList();

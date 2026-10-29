@@ -760,7 +760,7 @@ export default class SCPP
                                         id      : itemId,
                                         name    : this.itemsData[itemId].name,
                                         image   : this.itemsData[itemId].image,
-                                        qty     : this.recipesData[recipeId].ingredients[ingredient] * this.partsCostMultiplier
+                                        qty     : (this.partsCostMultiplier === 1) ? this.recipesData[recipeId].ingredients[ingredient] : Math.max(1, Math.round(this.recipesData[recipeId].ingredients[ingredient] * this.partsCostMultiplier))
                                     });
 
                                     break;

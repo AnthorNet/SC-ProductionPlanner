@@ -67,7 +67,7 @@ export function classifyRecipe(recipe)
 
 /*
  * options.partsCostMultiplier: "Recipe Parts Cost Multiplier" game mode (1.2): every recipe ingredient
- * amount is multiplied; products and durations stay the same.
+ * amount is multiplied, then rounded to a whole number (at least 1); products and durations stay the same.
  */
 export function prepareGameData(raw, { partsCostMultiplier = 1 } = {})
 {
@@ -188,7 +188,8 @@ function resolveStacks(stacks, itemByClassName, items, multiplier = 1)
         const item = itemByClassName.get(className);
             if(item === undefined){ return null; }
 
-        const rawAmount = stackAmount * multiplier;
+        // Whole numbers of the game's own units (fluids in litres)
+        const rawAmount = (multiplier === 1) ? stackAmount : Math.max(1, Math.round(stackAmount * multiplier));
 
         resolved.push({ item, amount: items[item].fluid ? rawAmount / 1000 : rawAmount });
     }

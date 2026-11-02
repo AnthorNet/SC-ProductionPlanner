@@ -3,7 +3,7 @@
 const webpack                       = require('webpack');
 const path                          = require('path');
 
-const SentryWebpackPlugin           = require('@sentry/webpack-plugin');
+const { sentryWebpackPlugin }       = require("@sentry/webpack-plugin");
 const TerserPlugin                  = require("terser-webpack-plugin");
 
 module.exports = env => {
@@ -39,13 +39,11 @@ module.exports = env => {
         },
 
         plugins: [
-            // Send new release to Sentry
-            new SentryWebpackPlugin({
-                // sentry-cli configuration
-                url: env.SENTRY_URL,
-                authToken: env.SENTRY_AUTH_TOKEN,
-                org: "sentry",
-                project: "satisfactory",
+            sentryWebpackPlugin({
+                org         : "sentry",
+                project     : "satisfactory",
+                url         : env.SENTRY_URL,
+                authToken   : env.SENTRY_AUTH_TOKEN,
 
                 // webpack specific configuration
                 validate: true,

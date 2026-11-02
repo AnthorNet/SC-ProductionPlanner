@@ -8,10 +8,11 @@
  *      e_i   surplus of item i left over (by-products, overflow)
  *      d_i   deficit of item i: what no enabled recipe can produce (should be 0)
  *      λ     scale of the requested ratios, only in "maximise" mode
+ *      z_i   output i made on top of ratio_i · λ from what the inputs still have, only in "maximise" mode
  *      y_rk  machines running recipe r with k somersloops (outputs x(1 + k/slots), power x(1 + k/slots)²)
  *
  *  For every item i:
- *      Σ_r rate_ir · x_r  +  s_i  +  u_i  +  d_i  −  e_i  =  target_i      (or ratio_i · λ)
+ *      Σ_r rate_ir · x_r  +  s_i  +  u_i  +  d_i  −  e_i  =  target_i      (or ratio_i · λ + z_i)
  *
  *  Objectives are solved lexicographically, deficits first, so an impossible request still
  *  returns a usable plan along with the list of missing items.
@@ -55,7 +56,8 @@ export const OBJECTIVES = ['resources', 'power', 'buildings', 'sink'];
  * @param {ReturnType<import('./GameData.js').prepareGameData>} game
  * @param {object}  request
  * @param {Object<string, number>}  [request.targets]       itemId → qty/min (fluids in m³)
- * @param {Object<string, number>}  [request.maximize]      itemId → ratio; maximises the output scale instead of fixed targets
+ * @param {Object<string, number>}  [request.maximize]      itemId → ratio; maximises the output scale instead of fixed targets,
+ *                                                          then what is left of the inputs makes more of the outputs
  * @param {Object<string, number>}  [request.inputs]        itemId → qty/min available for free
  * @param {boolean}                 [request.capInputs]     the inputs are the only source of those items (maximize from inputs):
  *                                                          no extraction, no recipe whose main product they are
@@ -75,17 +77,23 @@ export const OBJECTIVES = ['resources', 'power', 'buildings', 'sink'];
  */
 export function solveProduction(game, request = {})
 {
-    if(request.recipes?.forceAll === true)
-    {
-        const forced = solveOnce(game, request);
-            if(forced.status === 'optimal'){ return forced; }
+    /*
+     * A forced alternate may need an item nothing can make here (Distilled Silica without Quartz
+     * Purification for its Dissolved Silica): the plan is then made without forcing, with a warning.
+     */
+    const forcing   = (request.recipes?.forceAll === true) || (request.recipes?.forceOutputs !== false && (request.recipes?.alternates ?? []).length > 0);
+    const forced    = solveOnce(game, request);
+        if(forcing === false || (forced.status === 'optimal' && forced.missing.length === 0)){ return forced; }
 
-        const relaxed = solveOnce(game, { ...request, recipes: { ...request.recipes, forceAll: false } });
-            relaxed.warnings = [...(relaxed.warnings ?? []), { type: 'alternates_not_forced', reason: forced.message }];
-        return relaxed;
-    }
+    const relaxed = solveOnce(game, { ...request, recipes: { ...request.recipes, forceAll: false, forceOutputs: false } });
+        if(relaxed.status !== 'optimal' || relaxed.missing.length > 0){ return forced; }
 
-    return solveOnce(game, request);
+        relaxed.warnings = [...(relaxed.warnings ?? []), {
+            type    : 'alternates_not_forced',
+            reason  : forced.message,
+            missing : (forced.missing ?? []).map(m => m.item)
+        }];
+    return relaxed;
 }
 
 function solveOnce(game, request)
@@ -93,6 +101,14 @@ function solveOnce(game, request)
     const options   = normaliseRequest(game, request);
     let model       = buildModel(game, options);
     let solution    = solveLexicographic(model.lp, model.objectives.map(o => o.terms));
+
+        // Some output can grow without limit once the ratio is reached: keep the ratio only
+        if(solution.status === 'unbounded' && model.objectives[solution.unboundedStage]?.name === 'extra')
+        {
+            options.extraOutputs    = false;
+            model                   = buildModel(game, options);
+            solution                = solveLexicographic(model.lp, model.objectives.map(o => o.terms));
+        }
 
     /*
      * Somersloops are whole items sitting in whole machines: a machine holding k of them uses
@@ -289,7 +305,10 @@ function normaliseRequest(game, request)
     /*
      * An alternate selected for a requested output is the one used for it, even if another recipe is cheaper.
      * forceAll: the same for every item a selected alternate makes.
+     * Recipes making that item only as a by-product (Alumina Solution and its Silica) stay enabled,
+     * but what they make of it can only go to the surplus (see buildModel).
      */
+    const forced = new Map();   // itemId → recipes allowed to supply it
     if(recipeOptions.forceOutputs !== false || recipeOptions.forceAll === true)
     {
         const selected  = new Set(recipeOptions.alternates ?? []);
@@ -302,6 +321,8 @@ function normaliseRequest(game, request)
         {
             const chosen = [...enabled].filter(id => selected.has(id) && mainOf(id) === item);
                 if(chosen.length === 0){ continue; }
+
+            forced.set(item, new Set(chosen));
 
             for(const id of [...enabled])
             {
@@ -331,6 +352,7 @@ function normaliseRequest(game, request)
         maximize,
         inputs          : quantities(request.inputs),
         enabled,
+        forced,
         extraction,
         resourceLimits  : request.resourceLimits ?? {},
         resourceWeights : request.resourceWeights ?? {},
@@ -349,7 +371,7 @@ function buildModel(game, options)
 {
     const lp        = new LinearProgram();
     const balance   = new Map();   // itemId → terms
-    const vars      = { recipe: new Map(), amplified: new Map(), resource: new Map(), input: new Map(), surplus: new Map(), deficit: new Map(), lambda: null };
+    const vars      = { recipe: new Map(), amplified: new Map(), resource: new Map(), input: new Map(), surplus: new Map(), deficit: new Map(), lambda: null, extra: new Map() };
     const extractors = new Map();  // itemId → { building, rate, power }
 
     const addTerm = (item, variable, coefficient) => {
@@ -478,11 +500,45 @@ function buildModel(game, options)
     {
         vars.lambda = lp.addVariable('lambda');
             for(const [item, ratio] of Object.entries(options.maximize)){ addTerm(item, vars.lambda, -ratio); }
+
+        // What the inputs can still make once the ratio is at its maximum (see the 'extra' objective)
+        if(options.extraOutputs !== false)
+        {
+            for(const item of Object.keys(options.maximize))
+            {
+                const z = lp.addVariable('extra:' + item);
+                    vars.extra.set(item, z);
+                    addTerm(item, z, -1);
+            }
+        }
     }
 
     for(const [item, terms] of balance)
     {
         lp.addConstraint(terms, '=', options.targets[item] ?? 0, 'balance:' + item);
+    }
+
+    // Forced items: by-products from the other recipes are not used, they go to the surplus
+    for(const [item, allowed] of options.forced ?? [])
+    {
+        if(vars.surplus.has(item) === false){ continue; }
+
+        const terms = [];
+            for(const [id, x] of vars.recipe)
+            {
+                if(allowed.has(id)){ continue; }
+                for(const { item: product, rate } of game.recipes[id].products){ if(product === item){ terms.push([x, rate]); } }
+            }
+            for(const { recipe: id, factor, variable } of vars.amplified.values())
+            {
+                if(allowed.has(id)){ continue; }
+                for(const { item: product, rate } of game.recipes[id].products){ if(product === item){ terms.push([variable, rate * factor]); } }
+            }
+
+        if(terms.length > 0)
+        {
+            lp.addConstraint([...terms, [vars.surplus.get(item), -1]], '<=', 0, 'forcedByProduct:' + item);
+        }
     }
 
     // Objectives, in lexicographic order
@@ -492,6 +548,9 @@ function buildModel(game, options)
         if(options.mode === 'maximize')
         {
             objectives.push({ name: 'output', terms: [[vars.lambda, -1]] });
+
+            // Then the leftover inputs make more of the outputs (counted in ratios, so all weigh the same)
+            objectives.push({ name: 'extra', terms: [...vars.extra].map(([item, z]) => [z, -1 / options.maximize[item]]) });
         }
 
         for(const name of options.objectives)
@@ -754,7 +813,7 @@ function readSolution(game, options, model, solution)
 
     const lambda    = model.vars.lambda === null ? null : value(model.vars.lambda);
     const outputs   = options.mode === 'maximize'
-                    ? Object.entries(options.maximize).map(([item, ratio]) => ({ item, qty: ratio * lambda }))
+                    ? Object.entries(options.maximize).map(([item, ratio]) => ({ item, qty: ratio * lambda + (model.vars.extra.has(item) ? value(model.vars.extra.get(item)) : 0) }))
                     : Object.entries(options.targets).map(([item, qty]) => ({ item, qty }));
 
     const missing   = collect(model.vars.deficit);

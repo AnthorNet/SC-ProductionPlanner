@@ -554,6 +554,7 @@ export default class SCPP
         this.partsCostMultiplier = Number(formData.partsCostMultiplier) || 1;
 
         this.reset();
+        this.clearNotices();
 
         this.worker = this.createWorker(formData.view);
 
@@ -566,6 +567,8 @@ export default class SCPP
                     return this.showLoader();
                 case 'updateLoaderText':
                     return this.updateLoaderText(e.data.text);
+                case 'showNotice':
+                    return this.showNotice(e.data.text);
                 case 'updateUrl':
                     if(fullRefreshRequired === true)
                     {
@@ -598,6 +601,20 @@ export default class SCPP
                 case 'updateItemsList':
                 case 'updateBuildingsList':
                     return this[e.data.type](e.data.data);
+
+                case 'selectAltRecipes':
+                    // Alternates the solver had to add (needed by a selected one): selected in the form too
+                    for(let i = 0; i < e.data.recipes.length; i++)
+                    {
+                        $('select[name="altRecipes[]"] option[value="' + e.data.recipes[i] + '"]').prop('selected', true);
+                    }
+                    $('select[name="altRecipes[]"]').selectpicker('refresh');
+
+                    if(initialCall === false && this.doUpdateUrl !== false)
+                    {
+                        this.updateUrl(e.data.url);
+                    }
+                    return;
 
                 case 'updateRequestedQuantities':
                     // Maximize: fill the output quantities, then run a normal calculation with them
@@ -872,6 +889,36 @@ export default class SCPP
     {
         this.productionContainer.find('.loader').show();
     }
+    /*
+     * Solver notices (alternates added or not forced...): Bootstrap alerts in the sidebar, under the
+     * help text, so they stay visible once the graph is drawn.
+     */
+    noticesContainer()
+    {
+        let container = $('#plannerNotices');
+            if(container.length === 0)
+            {
+                container = $('<div id="plannerNotices"></div>');
+                $('#serializeNewValues > .alert-info').first().after(container);
+            }
+
+        return container;
+    }
+
+    showNotice(text)
+    {
+        let alert = $('<div class="alert alert-warning alert-dismissible fade show mt-3 mb-0" role="alert"></div>');
+            alert.text(text);
+            alert.append('<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>');
+
+        this.noticesContainer().append(alert);
+    }
+
+    clearNotices()
+    {
+        $('#plannerNotices').empty();
+    }
+
     updateLoaderText(text)
     {
         this.productionContainer.find('.loader h6').html(text);

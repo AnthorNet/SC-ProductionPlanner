@@ -260,10 +260,45 @@ export default class Worker_Wrapper
     }
 
     // The loader hides once the graph is laid out: the tree list keeps the message visible
+    /*
+     * Forced alternates needing items only other alternates make: those were added to the plan,
+     * they are selected in the form too. Forced alternates that could not be used at all: notice.
+     */
+    showNotForcedNotice(plan)
+    {
+        const added = plan.warnings?.find(warning => warning.type === 'alternates_added');
+            if(added !== undefined && added.recipes.length > 0)
+            {
+                for(const id of added.recipes)
+                {
+                    if(this.altRecipes.includes(id) === false){ this.altRecipes.push(id); }
+                }
+                this.url.altRecipes = this.altRecipes;
+
+                this.postMessage({type: 'selectAltRecipes', recipes: added.recipes, url: this.url});
+                this.showNotice('Added to the alternate recipes, needed for ' + added.missing.map(item => this.items[item]?.name ?? item).join(', ')
+                              + ': ' + added.recipes.map(id => this.recipes[id]?.name ?? id).join(', ') + '.');
+            }
+
+        const warning = plan.warnings?.find(warning => warning.type === 'alternates_not_forced');
+            if(warning === undefined){ return; }
+
+        const missing = (warning.missing ?? []).map(item => this.items[item]?.name ?? item);
+            if(missing.length > 0)
+            {
+                this.showNotice('The selected alternate recipes cannot all be forced, nothing makes ' + missing.join(', ') + ': the plan uses the cheapest recipes.');
+                return;
+            }
+
+        this.showNotice('The selected alternate recipes cannot all be forced: the plan uses the cheapest recipes.');
+    }
+
+    // Shown as an alert in the sidebar (and on top of the tree list)
     showNotice(text)
     {
-        this.notice = text;
-        this.postMessage({type: 'updateLoaderText', text: text});
+        this.notice = (this.notice === null) ? text : this.notice + '<br />' + text;
+        this.postMessage({type: 'showNotice', text: text});
+        this.postMessage({type: 'updateLoaderText', text: text});   // Still readable when no graph is drawn
     }
 
     postMessage(e)

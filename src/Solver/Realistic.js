@@ -223,10 +223,7 @@ export default class Solver_Realistic extends Worker_Wrapper
             this.showNotice(plan.message);
             return;
         }
-        if(plan.warnings?.some(warning => warning.type === 'alternates_not_forced'))
-        {
-            this.showNotice('The selected alternate recipes cannot all be forced: the plan uses the cheapest recipes.');
-        }
+        this.showNotForcedNotice(plan);
 
         const flows = (this.options.maxLevel !== null) ? this.cutAtMaxLevel(plan, plan.flows) : plan.flows;
 

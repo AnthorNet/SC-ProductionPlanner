@@ -78,12 +78,16 @@ export const OBJECTIVES = ['resources', 'power', 'buildings', 'sink'];
 export function solveProduction(game, request = {})
 {
     /*
-     * A forced alternate may need an item nothing can make here (Distilled Silica without Quartz
-     * Purification for its Dissolved Silica): the plan is then made without forcing, with a warning.
+     * A forced alternate may need an item only another alternate makes (Distilled Silica needs the
+     * Dissolved Silica of Quartz Purification): those alternates are added to the plan, with a
+     * warning. If that is not enough, the plan is made without forcing, with a warning too.
      */
     const forcing   = (request.recipes?.forceAll === true) || (request.recipes?.forceOutputs !== false && (request.recipes?.alternates ?? []).length > 0);
     const forced    = solveOnce(game, request);
         if(forcing === false || (forced.status === 'optimal' && forced.missing.length === 0)){ return forced; }
+
+    const completed = completeAlternates(game, request, forced);
+        if(completed !== null){ return completed; }
 
     const relaxed = solveOnce(game, { ...request, recipes: { ...request.recipes, forceAll: false, forceOutputs: false } });
         if(relaxed.status !== 'optimal' || relaxed.missing.length > 0){ return forced; }
@@ -94,6 +98,40 @@ export function solveProduction(game, request = {})
             missing : (forced.missing ?? []).map(m => m.item)
         }];
     return relaxed;
+}
+
+/*
+ * Enables the unselected alternates making the missing items (a few rounds, as they may need
+ * other alternates in turn). They are enabled, not forced. Returns the plan once nothing is
+ * missing, null otherwise.
+ */
+function completeAlternates(game, request, plan)
+{
+    const exclude   = new Set(request.recipes?.exclude ?? []);
+    const selected  = new Set([...(request.recipes?.alternates ?? []), ...(request.recipes?.conversions ?? [])]);
+    const added     = new Set();
+    let current     = plan;
+
+    for(let round = 0; round < 3 && current.status === 'optimal' && current.missing.length > 0; round++)
+    {
+        const missing   = new Set(current.missing.map(m => m.item));
+        const before    = added.size;
+            for(const recipe of Object.values(game.recipes))
+            {
+                if(recipe.kind === 'standard' || selected.has(recipe.id) || added.has(recipe.id) || exclude.has(recipe.id)){ continue; }
+                if(recipe.products.some(({ item }) => missing.has(item))){ added.add(recipe.id); }
+            }
+            if(added.size === before){ return null; }
+
+        current = solveOnce(game, { ...request, recipes: { ...request.recipes, conversions: [...(request.recipes?.conversions ?? []), ...added] } });
+    }
+
+    if(current.status !== 'optimal' || current.missing.length > 0){ return null; }
+
+    const used = [...new Set(current.recipes.filter(recipe => added.has(recipe.id)).map(recipe => recipe.id))];
+        current.warnings = [...(current.warnings ?? []), { type: 'alternates_added', recipes: used, missing: plan.missing.map(m => m.item) }];
+
+    return current;
 }
 
 function solveOnce(game, request)

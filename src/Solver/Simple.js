@@ -74,10 +74,7 @@ export default class Solver_Simple extends Worker_Wrapper
             this.showNotice(plan.message);
             return;
         }
-        if(plan.warnings?.some(warning => warning.type === 'alternates_not_forced'))
-        {
-            this.showNotice('The selected alternate recipes cannot all be forced: the plan uses the cheapest recipes.');
-        }
+        this.showNotForcedNotice(plan);
 
         this.buildGraph(game, plan);
     }

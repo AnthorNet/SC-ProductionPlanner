@@ -37,7 +37,9 @@ const SIZES = {
     grid        : 32,       // Dragged nodes move by steps of the grid
     stub        : 28,       // Straight part out of a port when a moved node's edges are re-routed
     track       : 20,       // Distance between the jogs of a moved node's lines
-    sameLabelDistance : 700 // Under that, a line labelled alike at both ends keeps only the end label
+    sameLabelDistance : 700,// Under that, a line labelled alike at both ends keeps only the end label
+    nodeTextBoost   : 2.2,  // Zoomed out, percentages and port labels grow to stay readable, up to these factors (never larger on screen than at 100%)
+    portTextBoost   : 2
 };
 
 export default class Renderer
@@ -832,12 +834,13 @@ export default class Renderer
         }
         ctx.globalAlpha = 1;
 
-        // Port labels last, so lines never hide them
-        if(k >= 0.3 && this.portLabels)
+        // Port labels last, so lines never hide them (always shown, they grow when zoomed out)
+        if(this.portLabels)
         {
             for(const node of this.layout.nodes)
             {
-                if(visible({ x: node.x - 200, y: node.y - 60, width: node.width + 400, height: node.height + 120 }) === false){ continue; }
+                const margin = this.textBoost(SIZES.portTextBoost);
+                if(visible({ x: node.x - 200 * margin, y: node.y - 60 * margin, width: node.width + 400 * margin, height: node.height + 120 * margin }) === false){ continue; }
                 if(neighbours !== null && neighbours.has(node.id) === false && node !== this.hovered){ continue; }
 
                 for(const port of node.inPorts)
@@ -1025,7 +1028,7 @@ export default class Renderer
         const lines     = showLabel ? this.labelLines(node) : [];
         const textSize  = lines.reduce((sum, line) => sum + line.size + 4, 0);
         const image     = this.image(data.image);
-        const imageSize = (data.image === undefined) ? 0 : (isLogistic ? node.width * 0.7 : SIZES.image);
+        const imageSize = (data.image === undefined) ? 0 : (isLogistic ? node.width * 0.7 : Math.min(SIZES.image, node.height - textSize - 30));
         const imageX    = node.x + (node.width - imageSize) / 2;
         const imageY    = node.y + Math.max(10, (node.height - imageSize - (textSize > 0 ? textSize + 10 : 0)) / 2);
             if(image !== null)
@@ -1081,9 +1084,31 @@ export default class Renderer
         ctx.globalAlpha = globalAlpha;
     }
 
+    /*
+     * Zoomed out, texts are drawn larger so they stay readable: their size on screen stays the one
+     * at 100% until the factor reaches its maximum. Steps of 0.1 so wrapped labels can be cached.
+     */
+    textBoost(maximum)
+    {
+        return Math.round(Math.min(maximum, Math.max(1, 1 / this.view.k)) * 10) / 10;
+    }
+
+    // Smaller cards (balancers) have less room to grow their label
+    nodeTextBoost(node)
+    {
+        return this.textBoost(Math.max(1, SIZES.nodeTextBoost * Math.min(1, node.width / SIZES.building.width)));
+    }
+
     labelLines(node)
     {
-        return node.labelLines ?? (node.labelLines = this.wrapLabel(node.data.label, node.width - 20));
+        const boost = this.nodeTextBoost(node);
+            if(node.labelLines?.boost !== boost)
+            {
+                node.labelLines         = this.wrapLabel(node.data.label, node.width - 20, boost);
+                node.labelLines.boost   = boost;
+            }
+
+        return node.labelLines;
     }
 
     drawNodeLabel(node, top)
@@ -1100,19 +1125,35 @@ export default class Renderer
             if(y + line.size > node.y + node.height - 6){ return; }
 
             ctx.font        = line.font;
-            ctx.fillStyle   = (index === 0) ? THEME.text : THEME.textMuted;
+            ctx.fillStyle   = (index === 0 || line.strong) ? THEME.text : THEME.textMuted;
             ctx.fillText(line.text, node.x + node.width / 2, y, maxWidth);
             y += line.size + 4;
         });
     }
 
-    // First line bold, the rest (recipe, shards, somersloops) smaller; long lines wrapped
-    wrapLabel(label, maxWidth)
+    /*
+     * First line bold, the rest (recipe, shards, somersloops) smaller; long lines wrapped.
+     * Zoomed out (boost > 1), the percentage leaves the first line and grows on its own line:
+     * names and recipes keep their size.
+     */
+    wrapLabel(label, maxWidth, boost = 1)
     {
         const ctx   = this.context;
         const lines = [];
+        const parts = String(label).split('\n');
+        let percent = null;
 
-        String(label).split('\n').forEach((part, index) => {
+            if(boost > 1)
+            {
+                const match = parts[0].match(/^(.*\S)\s*(\(\s*[\d.,\s\u00a0\u202f]+%\s*\))$/);
+                    if(match !== null)
+                    {
+                        parts[0]    = match[1];
+                        percent     = match[2];
+                    }
+            }
+
+        parts.forEach((part, index) => {
             const size  = (index === 0) ? 17 : 14;
             const font  = ((index === 0) ? 'bold ' : '') + size + 'px ' + THEME.font;
                 ctx.font = font;
@@ -1132,6 +1173,12 @@ export default class Renderer
                         }
                 }
                 if(current !== ''){ lines.push({ text: current, font, size }); }
+
+            if(index === 0 && percent !== null)
+            {
+                const size = 17 * boost;
+                    lines.push({ text: percent, font: 'bold ' + size + 'px ' + THEME.font, size, strong: true });
+            }
         });
 
         return lines;
@@ -1145,7 +1192,7 @@ export default class Renderer
     {
         if(node.data.nodeType === 'merger' || node.data.nodeType === 'splitter')
         {
-            return this.drawCompactPortLabel(port);
+            return this.drawCompactPortLabel(port, node);
         }
 
         const ctx       = this.context;
@@ -1161,8 +1208,14 @@ export default class Renderer
 
         const width     = Math.max(nameWidth, qtyWidth) + 12;
         const height    = 34;
+        const boost     = this.portLabelBoost(port, node, width, height);
 
-        const { x, y }  = this.portLabelPosition(port, width, height);
+        const position  = this.portLabelPosition(port, width * boost, height * boost);
+        const x = 0, y = 0;
+
+        ctx.save();
+        ctx.translate(position.x, position.y);
+        ctx.scale(boost, boost);
 
         roundedRect(ctx, x, y, width, height, 6);
         ctx.fillStyle = THEME.labelBackground;
@@ -1176,6 +1229,7 @@ export default class Renderer
         ctx.font            = 'bold 13px ' + THEME.font;
         ctx.fillStyle       = THEME.text;
         ctx.fillText(amount, x + 6, y + 18);
+        ctx.restore();
     }
 
     // Total carried by a port, per minute (fluids are stored x1000, shown in m³)
@@ -1189,7 +1243,7 @@ export default class Renderer
              : this.numberFormat.format(Math.round(qty * 100) / 100) + '/min';
     }
 
-    drawCompactPortLabel(port)
+    drawCompactPortLabel(port, node)
     {
         const ctx       = this.context;
         const item      = this.items[port.item] ?? {};
@@ -1202,7 +1256,13 @@ export default class Renderer
         const textX     = (icon !== null) ? iconSize + 7 : 5;
         const width     = textX + ctx.measureText(amount).width + 5;
         const height    = 20;
-        const { x, y }  = this.portLabelPosition(port, width, height);
+        const boost     = this.portLabelBoost(port, node, width, height);
+        const position  = this.portLabelPosition(port, width * boost, height * boost);
+        const x = 0, y = 0;
+
+        ctx.save();
+        ctx.translate(position.x, position.y);
+        ctx.scale(boost, boost);
 
         roundedRect(ctx, x, y, width, height, 5);
         ctx.fillStyle = THEME.labelBackground;
@@ -1217,6 +1277,28 @@ export default class Renderer
         ctx.textBaseline    = 'top';
         ctx.fillStyle       = THEME.text;
         ctx.fillText(amount, x + textX, y + 4);
+        ctx.restore();
+    }
+
+    /*
+     * Zoomed out, port labels grow, but no more than the room between the slots of their side,
+     * so neighbouring labels never overlap.
+     */
+    portLabelBoost(port, node, width, height)
+    {
+        const boost = this.textBoost(SIZES.portTextBoost);
+            if(boost === 1){ return 1; }
+
+        const side  = (port.side === 'in') ? node.inPorts : node.outPorts;
+        let pitch   = Infinity;
+            for(const other of side)
+            {
+                if(other === port || other.edges.length === 0){ continue; }
+                pitch = Math.min(pitch, (port.dx !== 0) ? Math.abs(other.y - port.y) : Math.abs(other.x - port.x));
+            }
+
+        const room  = (port.dx !== 0) ? (pitch - 4) / height : (2 * pitch - 6) / width;
+            return Math.max(1, Math.min(boost, room));
     }
 
     /*
